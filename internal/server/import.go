@@ -68,6 +68,11 @@ func (e *Engine) ImportWith(a auth.Actor, mode string, body io.Reader, opt Impor
 	}
 	if head != "" {
 		e.logEvent(a, "import", "", "denied", "repository is not empty")
+		if e.onlyBootstrap() {
+			// The welcome commit is never replaced: import needs a setup
+			// made with trove init --no-welcome.
+			return api.ImportResp{}, newErr(KindConflict, "import is only possible into an empty knowledge base; this one holds the welcome note of trove init. Create the setup with trove init --no-welcome to import an existing knowledge base")
+		}
 		return api.ImportResp{}, newErr(KindConflict, "import is only possible into an empty knowledge base")
 	}
 	if mode != "tar" && mode != "bundle" {

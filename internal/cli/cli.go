@@ -32,7 +32,8 @@ import (
 const usage = `trove: approval-gated knowledge base for AI agents
 
 Server:
-  trove serve [--config trove.json]          run the server (env TROVE_CONFIG)
+  trove init [--yes] [--dir trove] [flags]   first setup: config, data folder, tokens (see trove init -h)
+  trove serve [--config trove.json] [--listen addr]   run the server (env TROVE_CONFIG)
   trove token new <name> <role>              create a token (role: reader|agent|approver)
   trove token hash                           hash a token read from stdin
   trove audit verify --file <audit.jsonl> [--expect-last <hash>]   verify the audit chain locally
@@ -60,11 +61,13 @@ non-loopback host needs --insecure-http or TROVE_INSECURE_HTTP=1):
 
 type env struct {
 	out, errw io.Writer
+	in        io.Reader // interactive input (trove init)
+	tty       bool      // in is a terminal
 }
 
 // Run executes the command line and returns the exit code.
 func Run(args []string, stdout, stderr io.Writer) int {
-	e := &env{out: stdout, errw: stderr}
+	e := &env{out: stdout, errw: stderr, in: os.Stdin, tty: isTerminal(os.Stdin)}
 	if len(args) == 0 {
 		fmt.Fprint(stderr, usage)
 		return 2
@@ -72,6 +75,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	var err error
 	cmd, rest := args[0], args[1:]
 	switch cmd {
+	case "init":
+		err = e.initSetup(rest)
 	case "serve":
 		err = e.serve(rest)
 	case "token":
@@ -233,6 +238,20 @@ func (c *clientFlags) workspace() (*client.Workspace, *client.Client, error) {
 	return ws, cl, nil
 }
 
+// isTerminal reports whether f is a terminal, with the standard library
+// only: a character device that is not the null device (docker run
+// without -i connects stdin to /dev/null, which is a character device too).
+func isTerminal(f *os.File) bool {
+	fi, err := f.Stat()
+	if err != nil || fi.Mode()&os.ModeCharDevice == 0 {
+		return false
+	}
+	if dn, err := os.Stat(os.DevNull); err == nil && os.SameFile(fi, dn) {
+		return false
+	}
+	return true
+}
+
 func newFlags(name string) *flag.FlagSet {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	return fs
@@ -254,21 +273,37 @@ func line(s string) string { return safe.Line(s, 0) }
 // ---- server side commands ----
 
 func (e *env) serve(args []string) error {
-	fs := newFlags("serve")
-	cfgPath := fs.String("config", os.Getenv("TROVE_CONFIG"), "config file")
-	if _, err := parse(fs, args); err != nil {
-		return err
-	}
-	if *cfgPath == "" {
-		*cfgPath = "trove.json"
-	}
-	cfg, err := config.Load(*cfgPath)
+	cfg, err := serveConfig(args)
 	if err != nil {
 		return err
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	return server.Serve(ctx, cfg, nil)
+}
+
+// serveConfig parses the serve flags and loads the config.
+func serveConfig(args []string) (config.Config, error) {
+	fs := newFlags("serve")
+	cfgPath := fs.String("config", os.Getenv("TROVE_CONFIG"), "config file")
+	listen := fs.String("listen", "", "listen address, overrides the config (e.g. 0.0.0.0:8470 inside a container whose port is published on 127.0.0.1 only)")
+	if _, err := parse(fs, args); err != nil {
+		return config.Config{}, err
+	}
+	if *cfgPath == "" {
+		*cfgPath = "trove.json"
+	}
+	cfg, err := config.Load(*cfgPath)
+	if err != nil {
+		return cfg, err
+	}
+	if *listen != "" {
+		if err := checkListen(*listen); err != nil {
+			return cfg, err
+		}
+		cfg.Listen = *listen
+	}
+	return cfg, nil
 }
 
 func (e *env) token(args []string) error {

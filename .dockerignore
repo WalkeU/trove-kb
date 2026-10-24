@@ -5,6 +5,11 @@
 !.env.example
 data/
 config/
+# a "trove init" folder (tokens) in the repository root
+trove/
+owner/
+agents/
+readers/
 dist/
 tokens.json
 trove.json

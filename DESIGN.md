@@ -25,6 +25,15 @@ Short technical design. The requirements live in the project plan; this file rec
 
 `kb.git/` (bare repo, branch `main`), `proposals/` (draft and pending), `archive/` (terminal states), `audit.jsonl`, `tmp/`, `trove.lock`.
 
+## First setup (`trove init`)
+
+- Creates `<dir>/config/` (`trove.json`, `tokens.json`), `<dir>/data/`, `<dir>/owner/` (approver token), `<dir>/agents/` and optionally `<dir>/readers/`; folders 0700, files 0600. `data_dir` is `../data`, relative to the config file, so the same layout works on the host and in Docker (`/config` read-only, `/data`).
+- Wizard on a terminal; without one (or with `--yes`) flags only, never a prompt. Terminal check: character device that is not the null device (standard library only).
+- Write order: `tokens.json` (hashes), token files, `trove.json` last, each with `store.WriteFileAtomic`. Any error or SIGINT/SIGTERM during the write phase rolls back (removes new files and created folders, restores files replaced with `--force`).
+- Self-check: the config is loaded with the `serve` code path (`serveConfig`, `config.Load`, `Validate`), every token file must map to its name and role in the keyring, and `data_dir` must be writable.
+- Welcome note (default, `--no-welcome` turns it off): after the self-check, init opens the data directory with `server.Open` (the instance lock refuses a running server) and calls `Engine.Bootstrap`: approver actor, only while `main` does not exist, the files pass `Rules.Check` like a proposal, `bootstrap-intent` audit line first (fail closed), commit built and moved with `update-ref <new> ""` like import, trailers `Trove-Bootstrap: welcome` and `Trove-Approver`, then a `bootstrap` audit line. A non-empty knowledge base is left alone. Import stays "empty repository only": it never replaces the welcome commit and its error points to `--no-welcome`.
+- `trove serve --listen` overrides `listen`, so the config can stay on `127.0.0.1` while the container listens on `0.0.0.0` behind `-p 127.0.0.1:...`. The image sets `TROVE_INIT_DIR=/data` as the default init folder.
+
 ## HTTP API (all under `/v1`, `Authorization: Bearer <token>`)
 
 | Method and path | Roles | Purpose |

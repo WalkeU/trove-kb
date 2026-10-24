@@ -55,7 +55,7 @@ type Config struct {
 	TLSKey           string            `json:"tls_key"`
 	BotName          string            `json:"bot_name"`
 	BotEmail         string            `json:"bot_email"`
-	Tokens           []auth.TokenEntry `json:"tokens"`
+	Tokens           []auth.TokenEntry `json:"tokens,omitempty"`
 	TokensFile       string            `json:"tokens_file"`
 	InstructionsFile string            `json:"instructions_file"`
 	Limits           Limits            `json:"limits"`

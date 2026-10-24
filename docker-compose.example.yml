@@ -1,11 +1,18 @@
 # Example only, not a production setup. Adjust ports, paths and the
 # network exposure to your environment (a VPN or reverse proxy with TLS
 # is recommended; Trove itself makes no assumption about the network).
+#
+# Expects a "trove init" folder at ./trove (./trove/config, ./trove/data).
+# The init files belong to the user who ran it (mode 0600): on Linux set
+# user to that uid:gid (e.g. "1000:1000", see `id -u` and `id -g`).
 services:
   trove:
     build: .
     image: trove:local
     restart: unless-stopped
+    # user: "1000:1000"
+    # 0.0.0.0 inside the container only; the port is published on 127.0.0.1.
+    command: ["serve", "--listen", "0.0.0.0:8470"]
     read_only: true
     cap_drop: [ALL]
     security_opt:
@@ -17,6 +24,6 @@ services:
     ports:
       - "127.0.0.1:8470:8470"
     volumes:
-      - ./data:/data
-      - ./config:/config:ro
+      - ./trove/data:/data
+      - ./trove/config:/config:ro
     # No docker socket, no host network.

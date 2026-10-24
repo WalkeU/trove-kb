@@ -60,23 +60,65 @@ További részletek:
 
 ## Gyors kezdés
 
-Go 1.22+ és git kell.
+A `trove init` egy teljes első beállítást hoz létre: konfig, adatmappa, egy owner (approver) token és agent tokenek. A fő út a Docker:
 
 ```sh
-go build -o trove ./cmd/trove                 # 1. build (Windows: -o trove.exe)
-trove token new owner approver                # 2. tokenek; a kiírt {"name","role","sha256"}
-trove token new laptop-agent agent            #    sorokat tedd a tokens.json-ba
-cp trove.example.json trove.json              # 3. data_dir, listen, validation.allowed_dirs beállítása
-trove serve --config trove.json               # 4. szerver indítása
+docker build -t trove:local .                       # 1. image build
+mkdir trove                                         # 2. a beállítás mappája, a tiéd
+docker run --rm -it --user "$(id -u):$(id -g)" -v "$PWD/trove:/data" \
+  trove:local init --host-dir "$PWD/trove"          # 3. varázsló (Enter: biztonságos alapérték)
+docker run -d --name trove --read-only --cap-drop ALL \
+  --security-opt no-new-privileges:true --user "$(id -u):$(id -g)" \
+  -p 127.0.0.1:8470:8470 \
+  -v "$PWD/trove/config:/config:ro" -v "$PWD/trove/data:/data" \
+  trove:local serve --listen 0.0.0.0:8470           # 4. szerver indítása
 ```
 
-A token egyszer jelenik meg, a szerverre csak a hash kerül (minta: `tokens.example.json`). TLS-t a `tls_cert`/`tls_key` adhat, vagy egy elé tett reverse proxy / VPN.
+- A végén az `init` a generált konfigot ugyanazzal a kóddal tölti be és ellenőrzi, mint a `trove serve`, és kiírja a következő lépéseket a saját útvonalaiddal: serve és Docker parancs, az owner és az agent környezete (külön), MCP kliens konfig Claude Code-hoz és Cursorhoz, import parancs.
+- `--user`: a fájlok a tiéid, 0600 joggal, ezért a konténer a te uid-oddal fut (így sem root). Docker Desktopon (Windows, macOS) elhagyható; PowerShellben `-v "${PWD}\trove:/data"`.
+- A `serve --listen 0.0.0.0:8470` csak a konténeren belül érvényes; a `-p 127.0.0.1:...` miatt a port a hoszton csak a loopbacken látszik.
+- Terminál nélkül (CI, szkript, `docker run` `-it` nélkül) az `init` nem kérdez, `--yes` kell:
+
+```sh
+trove init --yes --dir trove --agent laptop --agent ci --reader docs --allowed-dirs runbooks,decisions
+```
+
+Amit az `init` létrehoz (mappák 0700, fájlok 0600; Windows ezeket a jogokat nem érvényesíti):
+
+| Útvonal | Tartalom | Hova kerül |
+|---|---|---|
+| `trove/config/trove.json` | szerver konfig (`data_dir` `../data`, `tokens_file` `tokens.json`) | a szerverhez, csak olvasható (`/config`) |
+| `trove/config/tokens.json` | csak SHA-256 hashek | a szerverhez, csak olvasható |
+| `trove/data/` | üres adatmappa | a szerverhez (`/data`) |
+| `trove/owner/<név>.token` | approver token | csak az ownerhez, agent környezetbe soha |
+| `trove/agents/<név>.token`, `trove/readers/<név>.token` | agent és reader tokenek | agentenként egy fájl |
+
+Biztonságos alapértékek és viselkedés:
+
+- A `listen` alapból `127.0.0.1:8470`. Nem loopback címre (`0.0.0.0`, LAN vagy VPN cím) figyelmeztet (a Trove-nak nincs saját TLS-e) és megerősítést kér, `--yes` mellett `--allow-non-loopback` kell.
+- A `validation.allowed_dirs` alapból `infra`, `projects`, `apps`, `claude`, `snippets`, `runbooks`, `decisions`, ha mást nem választasz (`--allowed-dirs`). Üres listát nem fogad el, az soha nem jelenti azt, hogy "minden".
+- Meglévő beállítást `--force` nélkül nem ír felül; a `--force` minden tokent lecserél, a tudásbázist megtartja.
+- A tokenek 256 bites véletlen értékek. Csak a token fájlokba kerülnek (atomikusan: ideiglenes fájl, majd átnevezés), kiírva vagy naplózva sehol nincsenek; a `--show-tokens` egyszer kiírja őket. Megszakított vagy hibás futás eltávolítja, amit írt.
+- A te felhasználóddal futó agent az `owner/` mappát is olvashatja: az owner tokent tedd jelszókezelőbe vagy olyan mappába, amit az agent nem olvas.
+
+A tudásbázis egy rövid üdvözlő jegyzettel (`INDEX.md`) indul, így az agentek azonnal syncelhetnek. Az `init` ezt első commitként közvetlenül az adatmappába írja (owner oldalon, token nélkül), `Trove-Bootstrap: welcome` trailerrel jelölve, és az audit hash-láncba is bekerül; csak üres tudásbázisba írja, meglévőhöz soha nem nyúl (`--force` mellett sem). Ha inkább egy meglévő tudásbázist importálnál, a beállítást `--no-welcome`-mal hozd létre: az import csak üres szerverre megy, és az üdvözlő commitot nem írja felül.
+
+Natív bináris Docker helyett (Go 1.22+ és git kell):
+
+```sh
+go build -o trove ./cmd/trove                 # Windows: -o trove.exe
+trove init                                    # létrehozza a ./trove mappát
+trove serve --config trove/config/trove.json
+```
+
+Kézi beállítás `init` nélkül: a `trove token new <név> <szerep>` kiír egy tokent és a hozzá tartozó `{"name","role","sha256"}` sort a `tokens.json`-ba (minta: [`tokens.example.json`](tokens.example.json)); a [`trove.example.json`](trove.example.json) másolata `trove.json` néven, benne a `data_dir`, `listen` és `validation.allowed_dirs` beállítása. TLS-t a `tls_cert`/`tls_key` adhat, vagy egy elé tett reverse proxy / VPN.
 
 Agent oldal (agent token):
 
 ```sh
-export TROVE_URL=https://kb.example.com
-export TROVE_TOKEN_FILE=~/.config/trove/agent-token
+export TROVE_URL=http://127.0.0.1:8470        # vagy a proxyd https:// címe
+export TROVE_TOKEN_FILE="$PWD/trove/agents/agent.token"
+mkdir -p ~/kb-mirror
 trove sync --dir ~/kb-mirror
 trove begin "backup runbook frissítése" --scope runbooks
 # fájlok szerkesztése a tükörben
@@ -87,14 +129,15 @@ trove submit
 Owner oldal (approver token, saját terminálon):
 
 ```sh
-export TROVE_APPROVER_TOKEN_FILE=~/.config/trove/owner-token
+export TROVE_URL=http://127.0.0.1:8470
+export TROVE_APPROVER_TOKEN_FILE="$PWD/trove/owner/owner.token"
 trove review                          # függő javaslatok listája
 trove review <id>                     # teljes diff, figyelmeztetések, digest
 trove approve <id> --digest <digest>
 trove reject <id> "indok"
 ```
 
-Egyszeri import (approver token, csak üres szerverre). Titok-találat esetén az import megáll, semmi nem kerül be:
+Meglévő KB importja (approver token, csak üres szerverre, ezért a beállításhoz `trove init --no-welcome` kell). Titok-találat esetén az import megáll, semmi nem kerül be:
 
 ```sh
 trove import /path/to/kb --history    # git előzménnyel (bundle), az előzményt is szkenneli
@@ -187,11 +230,11 @@ Approve, reject, import és review nincs. Egy üzenet legfeljebb 8 MiB. Az agent
 
 ## Konfiguráció
 
-Szerver: a [`trove.example.json`](trove.example.json) másolata `trove.json` néven (vagy `TROVE_CONFIG`).
+Szerver: a `trove init` generálja, vagy a [`trove.example.json`](trove.example.json) másolata `trove.json` néven (vagy `TROVE_CONFIG`). A relatív utak a konfigfájl mappájához képest értendők.
 
 | Kulcs | Mintaérték | Jelentés |
 |---|---|---|
-| `listen` | `0.0.0.0:8470` | figyelési cím |
+| `listen` | `127.0.0.1:8470` | figyelési cím; a `trove serve --listen` felülírja (pl. `0.0.0.0:8470` konténeren belül) |
 | `data_dir` | `/data` | `kb.git/` (bare repo, `main` ág), `proposals/` (nyitott javaslatok), `archive/` (lezártak, csak metaadat), `audit.jsonl`, `tmp/`, `trove.lock` (egy szerverpéldány) |
 | `tls_cert`, `tls_key` | üres | beépített TLS; vagy reverse proxy / VPN |
 | `tokens_file` | `tokens.json` | token hashek ([`tokens.example.json`](tokens.example.json)) |
@@ -219,11 +262,11 @@ make cross                        # minden platformra a dist/ mappába
 
 ```sh
 docker build -t trove:local .
-cp docker-compose.example.yml docker-compose.yml   # igazítsd a saját környezetedhez
+cp docker-compose.example.yml docker-compose.yml   # egy trove init mappát vár ./trove alatt; igazítsd
 docker compose up -d
 ```
 
-Az image nem root felhasználóként fut (Alpine + git), csak olvasható root fájlrendszerrel is működik, a `8470`-es portot nyitja, a konfigot a `/config/trove.json`-ból olvassa, az adat a `/data` alatt van. A minta compose csak `127.0.0.1`-re köt, minden capability-t eldob, memória- és pid-korlátot állít. Az alap image-ek csak taggel vannak rögzítve; éles buildhez rögzítsd őket digesttel (`FROM image:tag@sha256:...`), a digestet magad ellenőrizve.
+Az image nem root felhasználóként fut (Alpine + git), csak olvasható root fájlrendszerrel is működik, a `8470`-es portot nyitja, a konfigot a `/config/trove.json`-ból olvassa, az adat a `/data` alatt van; az image-ben futó `trove init` a `/data` alá írja a beállítást (`TROVE_INIT_DIR`). Named volume-ot az image felhasználója írni tud; Linuxon hoszt mappához `--user` kell (lásd Gyors kezdés). A minta compose csak `127.0.0.1`-re köt, minden capability-t eldob, memória- és pid-korlátot állít. Az alap image-ek csak taggel vannak rögzítve; éles buildhez rögzítsd őket digesttel (`FROM image:tag@sha256:...`), a digestet magad ellenőrizve.
 
 ## Korlátok és roadmap
 

@@ -18,7 +18,9 @@ RUN apk add --no-cache git ca-certificates \
  && chown trove:trove /data
 COPY --from=build /out/trove /usr/local/bin/trove
 USER 10001:10001
-ENV HOME=/data TROVE_CONFIG=/config/trove.json
+# TROVE_INIT_DIR: "trove init" writes its setup into /data (mount a host
+# folder there); "trove serve" reads /config and writes /data as before.
+ENV HOME=/data TROVE_CONFIG=/config/trove.json TROVE_INIT_DIR=/data
 VOLUME ["/data"]
 EXPOSE 8470
 ENTRYPOINT ["/usr/local/bin/trove"]

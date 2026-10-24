@@ -59,21 +59,65 @@ Also:
 
 ## Quick start
 
-Requires Go 1.22+ and `git`.
+`trove init` creates a complete first setup: config, data folder, an owner (approver) token and agent tokens. The main path is Docker:
 
 ```sh
-go build -o trove ./cmd/trove                 # 1. build (Windows: -o trove.exe)
-trove token new owner approver                # 2. create tokens; put the printed
-trove token new laptop-agent agent            #    {"name","role","sha256"} lines in tokens.json
-cp trove.example.json trove.json              # 3. set data_dir, listen, validation.allowed_dirs
-trove serve --config trove.json               # 4. run the server
+docker build -t trove:local .                       # 1. build the image
+mkdir trove                                         # 2. setup folder, owned by you
+docker run --rm -it --user "$(id -u):$(id -g)" -v "$PWD/trove:/data" \
+  trove:local init --host-dir "$PWD/trove"          # 3. wizard (Enter keeps the safe defaults)
+docker run -d --name trove --read-only --cap-drop ALL \
+  --security-opt no-new-privileges:true --user "$(id -u):$(id -g)" \
+  -p 127.0.0.1:8470:8470 \
+  -v "$PWD/trove/config:/config:ro" -v "$PWD/trove/data:/data" \
+  trove:local serve --listen 0.0.0.0:8470           # 4. run the server
 ```
+
+- At the end `init` checks the generated config with the same code `trove serve` uses and prints the next steps for your paths: the serve and Docker commands, the owner and agent environments (separately), MCP client config for Claude Code and Cursor, and the import command.
+- `--user`: the files belong to you with mode 0600, so the container runs with your uid (still not root). On Docker Desktop (Windows, macOS) it can be left out; in PowerShell use `-v "${PWD}\trove:/data"`.
+- `serve --listen 0.0.0.0:8470` applies inside the container only; `-p 127.0.0.1:...` keeps the port on the host's loopback.
+- Without a terminal (CI, scripts, `docker run` without `-it`) `init` asks nothing and needs `--yes`:
+
+```sh
+trove init --yes --dir trove --agent laptop --agent ci --reader docs --allowed-dirs runbooks,decisions
+```
+
+What `init` creates (folders 0700, files 0600; Windows does not enforce these modes):
+
+| Path | Content | Goes to |
+|---|---|---|
+| `trove/config/trove.json` | server config (`data_dir` `../data`, `tokens_file` `tokens.json`) | the server, read-only (`/config`) |
+| `trove/config/tokens.json` | SHA-256 hashes only | the server, read-only |
+| `trove/data/` | empty data directory | the server (`/data`) |
+| `trove/owner/<name>.token` | approver token | the owner only, never an agent environment |
+| `trove/agents/<name>.token`, `trove/readers/<name>.token` | agent and reader tokens | one file per agent |
+
+Safe defaults and behavior:
+
+- `listen` is `127.0.0.1:8470`. A non-loopback address (`0.0.0.0`, a LAN or VPN address) prints a warning (Trove has no TLS of its own) and needs a confirmation, or `--allow-non-loopback` with `--yes`.
+- `validation.allowed_dirs` is `infra`, `projects`, `apps`, `claude`, `snippets`, `runbooks`, `decisions` unless you choose others (`--allowed-dirs`). An empty list is refused; it never means "everything".
+- An existing setup is never overwritten without `--force`; `--force` replaces every token but keeps the knowledge base.
+- Tokens are 256-bit random values. They are written only to the token files (atomically: temp file, then rename), never printed or logged; `--show-tokens` prints them once. An interrupted or failed run removes what it wrote.
+- An agent running as your user can read `owner/` too: move the owner token into a password manager or a folder the agent cannot read.
+
+The knowledge base starts with a short welcome note (`INDEX.md`), so agents can sync right away. `init` writes it as the first commit directly into the data folder (owner side, no token involved), marked with a `Trove-Bootstrap: welcome` trailer and recorded in the audit chain; it is only written into an empty knowledge base and never touches an existing one (not even with `--force`). To import an existing knowledge base instead, create the setup with `--no-welcome`: import only accepts an empty server and does not replace the welcome commit.
+
+Native binary instead of Docker (requires Go 1.22+ and `git`):
+
+```sh
+go build -o trove ./cmd/trove                 # Windows: -o trove.exe
+trove init                                    # creates ./trove
+trove serve --config trove/config/trove.json
+```
+
+Manual setup without `init`: `trove token new <name> <role>` prints a token and its `{"name","role","sha256"}` line for `tokens.json` (see [`tokens.example.json`](tokens.example.json)); copy [`trove.example.json`](trove.example.json) to `trove.json` and set `data_dir`, `listen` and `validation.allowed_dirs`.
 
 Agent side (agent token):
 
 ```sh
-export TROVE_URL=https://kb.example.com
-export TROVE_TOKEN_FILE=~/.config/trove/agent-token
+export TROVE_URL=http://127.0.0.1:8470        # or the https:// URL of your proxy
+export TROVE_TOKEN_FILE="$PWD/trove/agents/agent.token"
+mkdir -p ~/kb-mirror
 trove sync --dir ~/kb-mirror
 trove begin "backup retention" --scope runbooks
 # edit files in the mirror
@@ -84,14 +128,15 @@ trove submit
 Owner side (approver token, own terminal only):
 
 ```sh
-export TROVE_APPROVER_TOKEN_FILE=~/.config/trove/owner-token
+export TROVE_URL=http://127.0.0.1:8470
+export TROVE_APPROVER_TOKEN_FILE="$PWD/trove/owner/owner.token"
 trove review                          # pending proposals
 trove review <id>                     # full diff, warnings, digest
 trove approve <id> --digest <digest>
 trove reject <id> "reason"
 ```
 
-Bootstrapping an existing KB (approver token, only into an empty server; any secret finding stops the import):
+Importing an existing KB (approver token, only into an empty server, so the setup needs `trove init --no-welcome`; any secret finding stops the import):
 
 ```sh
 trove import /path/to/kb --history    # with git history (bundle), history is scanned too
@@ -161,11 +206,11 @@ There is no approve, reject, import or review over MCP. Max message size is 8 Mi
 
 ## Configuration
 
-Server: copy [`trove.example.json`](trove.example.json) to `trove.json` (or point `TROVE_CONFIG` at it).
+Server: generated by `trove init`, or copy [`trove.example.json`](trove.example.json) to `trove.json` (or point `TROVE_CONFIG` at it). Relative paths resolve against the folder of the config file.
 
 | Key | Example value | Meaning |
 |---|---|---|
-| `listen` | `0.0.0.0:8470` | listen address |
+| `listen` | `127.0.0.1:8470` | listen address; `trove serve --listen` overrides it (for example `0.0.0.0:8470` inside a container) |
 | `data_dir` | `/data` | holds `kb.git/`, `proposals/`, `archive/`, `audit.jsonl`, `tmp/`, `trove.lock` |
 | `tls_cert`, `tls_key` | empty | built-in TLS; or put a reverse proxy / VPN in front |
 | `tokens_file` | `tokens.json` | token hashes (see [`tokens.example.json`](tokens.example.json)) |
@@ -193,11 +238,11 @@ make cross                        # linux, darwin, windows (amd64, arm64) into d
 
 ```sh
 docker build -t trove:local .
-cp docker-compose.example.yml docker-compose.yml   # adjust to your environment
+cp docker-compose.example.yml docker-compose.yml   # expects a trove init folder at ./trove; adjust
 docker compose up -d
 ```
 
-The image runs as a non-root user on Alpine with `git`, works with a read-only root filesystem, exposes `8470`, reads `/config/trove.json` and keeps data in `/data`. The example compose file binds to `127.0.0.1` only, drops all capabilities and sets memory and pid limits. Base images are pinned by tag only: for production builds pin them by digest (`FROM image:tag@sha256:...`) after checking the digest yourself.
+The image runs as a non-root user on Alpine with `git`, works with a read-only root filesystem, exposes `8470`, reads `/config/trove.json` and keeps data in `/data`; `trove init` in the image writes its setup to `/data` (`TROVE_INIT_DIR`). A named volume is writable by the image user; a host folder on Linux needs `--user` (see Quick start). The example compose file binds to `127.0.0.1` only, drops all capabilities and sets memory and pid limits. Base images are pinned by tag only: for production builds pin them by digest (`FROM image:tag@sha256:...`) after checking the digest yourself.
 
 ## Limits and roadmap
 
