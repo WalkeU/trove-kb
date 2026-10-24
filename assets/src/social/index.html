@@ -1,0 +1,133 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1280, height=640" />
+    <title>Trove social preview</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "Cascadia Mono";
+        src: url("../hero/fonts/CascadiaMono.ttf") format("truetype");
+        font-weight: 200 700;
+      }
+      html,
+      body {
+        margin: 0;
+        background: #101114;
+      }
+      #root {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #101114;
+        color: #ebe5d6;
+        font-family: "Cascadia Mono", monospace;
+      }
+      #grid {
+        position: absolute;
+        inset: 0;
+        background-image: linear-gradient(#2c2f36 1px, transparent 1px), linear-gradient(90deg, #2c2f36 1px, transparent 1px);
+        background-size: 32px 32px;
+        opacity: 0.2;
+      }
+      #brand {
+        position: absolute;
+        left: 96px;
+        top: 150px;
+        display: flex;
+        align-items: center;
+        gap: 30px;
+      }
+      #brand svg {
+        display: block;
+      }
+      #claim {
+        position: absolute;
+        left: 96px;
+        top: 282px;
+        font-size: 40px;
+        line-height: 56px;
+        width: 1100px;
+      }
+      #claim .b {
+        color: #e3a83c;
+      }
+      #sub {
+        position: absolute;
+        left: 96px;
+        top: 444px;
+        font-size: 24px;
+        color: #a19d93;
+        letter-spacing: 0.02em;
+      }
+      #chain {
+        position: absolute;
+        left: 96px;
+        bottom: 72px;
+        display: flex;
+        align-items: center;
+        gap: 0;
+        font-size: 20px;
+      }
+      .c {
+        border: 2px solid #2c2f36;
+        border-radius: 8px;
+        padding: 8px 16px;
+        background: #17181c;
+        display: block;
+      }
+      .c.on {
+        border-color: #e3a83c;
+        color: #e3a83c;
+      }
+      .ln {
+        width: 36px;
+        height: 2px;
+        background: #e3a83c;
+        display: block;
+      }
+      #alpha {
+        position: absolute;
+        right: 96px;
+        top: 64px;
+        font-size: 18px;
+        letter-spacing: 0.16em;
+        color: #e4714f;
+        border: 2px solid #e4714f;
+        border-radius: 6px;
+        padding: 6px 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-width="1280" data-height="640" data-duration="1">
+      <div id="grid"></div>
+      <div id="alpha">ALPHA</div>
+      <div id="brand">
+        <svg width="96" height="96" viewBox="0 0 48 48" fill="none">
+          <rect x="4" y="8" width="40" height="34" rx="5" stroke="#ebe5d6" stroke-width="4" />
+          <path d="M4 20 H44" stroke="#ebe5d6" stroke-width="4" />
+          <path d="M13 29 H35 M13 35 H27" stroke="#a19d93" stroke-width="3" />
+          <rect x="18.5" y="14.5" width="11" height="11" transform="rotate(45 24 20)" fill="#e3a83c" />
+        </svg>
+        <svg width="380" height="78" viewBox="0 0 166 34" fill="none" stroke="#ebe5d6" stroke-width="5">
+          <path d="M0 2.5 H26 M13 2.5 V34" />
+          <path d="M38.5 34 V2.5 H51 A8 8 0 0 1 51 18.5 H38.5 M50 18.5 L60 34" />
+          <rect x="72.5" y="2.5" width="23" height="29" rx="8" stroke="#e3a83c" />
+          <path d="M106 2.5 L119 31.5 L132 2.5" />
+          <path d="M164 2.5 H144.5 V31.5 H164 M144.5 17 H160" />
+        </svg>
+      </div>
+      <div id="claim">A knowledge base AI agents read, <span class="b">but only humans can change.</span></div>
+      <div id="sub">proposals, digest-bound approval, hash-chained audit, MCP. one Go binary.</div>
+      <div id="chain">
+        <span class="c">propose</span><span class="ln"></span><span class="c">validate</span><span class="ln"></span><span class="c on">approve --digest</span><span class="ln"></span><span class="c">commit</span>
+      </div>
+    </div>
+    <script>
+      window.__timelines["main"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

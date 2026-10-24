@@ -1,0 +1,642 @@
+﻿<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[{"id":"theme","type":"string","label":"Theme (dark or light)","default":"dark"}]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1200, height=600" />
+    <title>Trove hero loop</title>
+    <!-- Re-render (from this folder): npx hyperframes render -o ../trove-hero-dark.mp4 ; light: add --variables '{"theme":"light"}'
+         GIF: ffmpeg -i in.mp4 -vf "fps=15,scale=1000:-1:flags=lanczos,split[s0][s1];[s0]palettegen=max_colors=96:stats_mode=diff[p];[s1][p]paletteuse=dither=none:diff_mode=rectangle" -loop 0 ../../trove-hero.gif -->
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "Cascadia Mono";
+        src: url("fonts/CascadiaMono.ttf") format("truetype");
+        font-weight: 200 700;
+      }
+      html,
+      body {
+        margin: 0;
+        background: #101114;
+      }
+      #root {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        font-family: "Cascadia Mono", monospace;
+        --bg: #101114;
+        --surface: #17181c;
+        --surface2: #1d1f24;
+        --line: #2c2f36;
+        --text: #ebe5d6;
+        --muted: #a19d93;
+        --brass: #e3a83c;
+        --brass-soft: rgba(227, 168, 60, 0.14);
+        --sage: #94c487;
+        --sage-soft: rgba(148, 196, 135, 0.12);
+        --rust: #e4714f;
+        --rust-soft: rgba(228, 113, 79, 0.12);
+        background: var(--bg);
+        color: var(--text);
+      }
+      #root.light {
+        --bg: #f3efe5;
+        --surface: #fbf8f1;
+        --surface2: #f0ebdf;
+        --line: #d8d0bf;
+        --text: #1c1b18;
+        --muted: #6f6a5f;
+        --brass: #9a6200;
+        --brass-soft: rgba(154, 98, 0, 0.1);
+        --sage: #3b7536;
+        --sage-soft: rgba(59, 117, 54, 0.1);
+        --rust: #b2432a;
+        --rust-soft: rgba(178, 67, 42, 0.09);
+      }
+      .abs {
+        position: absolute;
+      }
+      /* grid paper texture */
+      #grid {
+        position: absolute;
+        inset: 0;
+        background-image: linear-gradient(var(--line) 1px, transparent 1px),
+          linear-gradient(90deg, var(--line) 1px, transparent 1px);
+        background-size: 24px 24px;
+        opacity: 0.18;
+      }
+      /* header */
+      #brand {
+        left: 48px;
+        top: 34px;
+        height: 34px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+      #brand svg {
+        display: block;
+      }
+      #tagline {
+        left: 300px;
+        top: 44px;
+        font-size: 15px;
+        color: var(--muted);
+        letter-spacing: 0.04em;
+      }
+      #rail {
+        right: 48px;
+        top: 40px;
+        display: flex;
+        gap: 26px;
+        font-size: 15px;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+      }
+      .step {
+        position: relative;
+        display: block;
+      }
+      .step b {
+        font-weight: 600;
+        margin-right: 8px;
+      }
+      #railbar {
+        top: 70px;
+        height: 3px;
+        background: var(--brass);
+        left: 0;
+        width: 100px;
+        transform-origin: left center;
+      }
+      /* card */
+      .panel {
+        background: var(--surface);
+        border: 1.5px solid var(--line);
+        border-radius: 10px;
+        box-sizing: border-box;
+      }
+      #card {
+        left: 48px;
+        top: 104px;
+        width: 640px;
+        height: 340px;
+        overflow: hidden;
+      }
+      #cardborder {
+        left: 48px;
+        top: 104px;
+        width: 640px;
+        height: 340px;
+        border: 2px solid var(--sage);
+        border-radius: 10px;
+        box-sizing: border-box;
+        opacity: 0;
+      }
+      .lbl {
+        font-size: 14px;
+        letter-spacing: 0.12em;
+        color: var(--muted);
+        text-transform: uppercase;
+      }
+      #cardhead {
+        left: 24px;
+        top: 20px;
+        right: 24px;
+        display: flex;
+        align-items: baseline;
+        gap: 14px;
+        font-size: 20px;
+      }
+      #pill {
+        position: absolute;
+        right: 24px;
+        top: 18px;
+        height: 30px;
+        width: 128px;
+        border-radius: 15px;
+        border: 1.5px solid var(--muted);
+        box-sizing: border-box;
+        overflow: hidden;
+        font-size: 15px;
+        letter-spacing: 0.08em;
+      }
+      .pillstate {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+      }
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 4px;
+        background: currentColor;
+        display: block;
+      }
+      #pill-draft {
+        color: var(--muted);
+      }
+      #pill-pending {
+        color: var(--brass);
+        opacity: 0;
+      }
+      #pill-applied {
+        color: var(--sage);
+        opacity: 0;
+      }
+      #meta {
+        left: 24px;
+        top: 60px;
+        font-size: 17px;
+        color: var(--muted);
+      }
+      #meta span {
+        color: var(--text);
+      }
+      #rule {
+        left: 0;
+        right: 0;
+        top: 98px;
+        height: 1.5px;
+        background: var(--line);
+      }
+      #file {
+        left: 24px;
+        top: 110px;
+        font-size: 17px;
+        display: flex;
+        gap: 12px;
+        align-items: center;
+      }
+      .badge {
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--brass);
+        border: 1.5px solid var(--brass);
+        border-radius: 4px;
+        padding: 1px 6px;
+      }
+      .dl {
+        left: 0;
+        right: 0;
+        height: 36px;
+        font-size: 20px;
+        line-height: 36px;
+        padding-left: 24px;
+        white-space: pre;
+      }
+      .dl.ctx {
+        color: var(--muted);
+      }
+      .dl.del {
+        color: var(--rust);
+        background: var(--rust-soft);
+      }
+      .dl.add {
+        color: var(--sage);
+        background: var(--sage-soft);
+      }
+      #scan {
+        left: 0;
+        right: 0;
+        top: 150px;
+        height: 36px;
+        background: var(--brass-soft);
+        border-left: 3px solid var(--brass);
+        opacity: 0;
+      }
+      #digestrow {
+        left: 24px;
+        bottom: 16px;
+        font-size: 17px;
+        display: flex;
+        gap: 14px;
+        align-items: baseline;
+      }
+      #digestrow .v {
+        color: var(--brass);
+      }
+      /* side panel */
+      #side {
+        left: 712px;
+        top: 104px;
+        width: 440px;
+        height: 340px;
+        overflow: hidden;
+        background: var(--surface2);
+      }
+      .stage {
+        position: absolute;
+        inset: 0;
+        padding: 22px 24px;
+        box-sizing: border-box;
+        opacity: 0;
+      }
+      .sh {
+        font-size: 14px;
+        letter-spacing: 0.12em;
+        color: var(--muted);
+        text-transform: uppercase;
+        margin-bottom: 18px;
+        display: block;
+      }
+      .tl {
+        font-size: 18px;
+        line-height: 34px;
+        white-space: pre;
+        display: block;
+      }
+      .tl .p {
+        color: var(--muted);
+      }
+      .tl .k {
+        color: var(--brass);
+      }
+      .tl .g {
+        color: var(--sage);
+      }
+      .tl .m {
+        color: var(--muted);
+      }
+      .chk {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 18px;
+        line-height: 40px;
+        white-space: pre;
+      }
+      .chk svg {
+        display: block;
+        flex: none;
+      }
+      .chk .n {
+        display: inline-block;
+        width: 138px;
+      }
+      .chk .m {
+        color: var(--muted);
+      }
+      .blocks {
+        margin-top: 16px;
+        font-size: 15px;
+        line-height: 24px;
+        color: var(--muted);
+        white-space: pre;
+        display: block;
+      }
+      .blocks .r {
+        color: var(--rust);
+      }
+      #seal {
+        right: 24px;
+        bottom: 24px;
+        height: 44px;
+        padding: 0 18px;
+        border-radius: 8px;
+        background: var(--brass);
+        color: var(--bg);
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      #dscan {
+        left: 24px;
+        top: 0;
+        width: 0;
+        height: 30px;
+        background: var(--brass-soft);
+        border-right: 2px solid var(--brass);
+      }
+      /* chain */
+      #chainlbl {
+        left: 48px;
+        top: 462px;
+        display: flex;
+        gap: 18px;
+        align-items: baseline;
+      }
+      #verify {
+        color: var(--sage);
+        font-size: 15px;
+        letter-spacing: 0.04em;
+        opacity: 0;
+      }
+      .blk {
+        top: 490px;
+        width: 196px;
+        height: 64px;
+        border: 1.5px solid var(--line);
+        border-radius: 8px;
+        box-sizing: border-box;
+        background: var(--surface);
+        padding: 9px 14px;
+        opacity: 0;
+      }
+      .blk .e {
+        font-size: 16px;
+        display: block;
+      }
+      .blk .h {
+        font-size: 14px;
+        color: var(--muted);
+        display: block;
+        margin-top: 6px;
+      }
+      .blk .h i {
+        font-style: normal;
+        color: var(--brass);
+      }
+      .lnk {
+        top: 521px;
+        width: 31px;
+        height: 2px;
+        background: var(--brass);
+        transform-origin: left center;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-width="1200" data-height="600" data-duration="18">
+      <div id="grid"></div>
+
+      <!-- header -->
+      <div id="brand" class="abs">
+        <svg width="34" height="34" viewBox="0 0 48 48" fill="none">
+          <rect x="4" y="8" width="40" height="34" rx="5" stroke="var(--text)" stroke-width="4" />
+          <path d="M4 20 H44" stroke="var(--text)" stroke-width="4" />
+          <path d="M13 29 H35 M13 35 H27" stroke="var(--muted)" stroke-width="3" />
+          <rect x="18.5" y="14.5" width="11" height="11" transform="rotate(45 24 20)" fill="var(--brass)" />
+        </svg>
+        <svg width="140" height="29" viewBox="0 0 166 34" fill="none" stroke="var(--text)" stroke-width="5" stroke-linejoin="miter">
+          <path d="M0 2.5 H26 M13 2.5 V34" />
+          <path d="M38.5 34 V2.5 H51 A8 8 0 0 1 51 18.5 H38.5 M50 18.5 L60 34" />
+          <rect x="72.5" y="2.5" width="23" height="29" rx="8" stroke="var(--brass)" />
+          <path d="M106 2.5 L119 31.5 L132 2.5" />
+          <path d="M164 2.5 H144.5 V31.5 H164 M144.5 17 H160" />
+        </svg>
+      </div>
+      <div id="tagline" class="abs">agents propose. humans approve.</div>
+      <div id="rail" class="abs">
+        <span class="step" id="s1"><b>01</b>PROPOSE</span>
+        <span class="step" id="s2"><b>02</b>VALIDATE</span>
+        <span class="step" id="s3"><b>03</b>APPROVE</span>
+        <span class="step" id="s4"><b>04</b>COMMIT</span>
+      </div>
+      <div id="railbar" class="abs"></div>
+
+      <!-- proposal card -->
+      <div id="card" class="abs panel">
+        <div id="scan" class="abs"></div>
+        <div id="cardhead" class="abs"><span class="lbl">Proposal</span><span>7f3a9c</span></div>
+        <div id="pill">
+          <div class="pillstate" id="pill-draft"><span class="dot"></span>DRAFT</div>
+          <div class="pillstate" id="pill-pending"><span class="dot"></span>PENDING</div>
+          <div class="pillstate" id="pill-applied"><span class="dot"></span>APPLIED</div>
+        </div>
+        <div id="meta" class="abs">agent <span>laptop-agent</span>   topic <span>"backup retention"</span></div>
+        <div id="rule" class="abs"></div>
+        <div id="file" class="abs"><span class="badge">M</span><span>runbooks/backup.md</span></div>
+        <div class="dl ctx abs" id="d1" style="top: 144px">  title: Backup runbook</div>
+        <div class="dl del abs" id="d2" style="top: 180px">- retention: 7 days</div>
+        <div class="dl add abs" id="d3" style="top: 216px">+ retention: 14 days</div>
+        <div class="dl add abs" id="d4" style="top: 252px">+ restore test: weekly</div>
+        <div id="digestrow" class="abs"><span class="lbl">Digest</span><span class="v">sha256 9c1e04ab...4b07</span></div>
+      </div>
+      <div id="cardborder" class="abs"></div>
+
+      <!-- side panel -->
+      <div id="side" class="abs panel">
+        <div class="stage" id="st1">
+          <span class="sh">Agent terminal</span>
+          <span class="tl" id="t1a"><span class="p">$ </span>trove submit</span>
+          <span class="tl" id="t1b"><span class="m">frozen  </span>id 7f3a9c</span>
+          <span class="tl" id="t1c"><span class="m">digest  </span><span class="k">9c1e04ab...4b07</span></span>
+          <span class="tl" id="t1d"><span class="m">state   </span><span class="k">pending review</span></span>
+        </div>
+        <div class="stage" id="st2">
+          <span class="sh">Server validation</span>
+          <div class="chk" id="c1"><svg width="22" height="22" viewBox="0 0 22 22"><path class="ck" d="M3 11.5 L8.5 17 L19 5" fill="none" stroke="var(--sage)" stroke-width="3" /></svg><span class="n">path</span><span class="m">runbooks/ allowed</span></div>
+          <div class="chk" id="c2"><svg width="22" height="22" viewBox="0 0 22 22"><path class="ck" d="M3 11.5 L8.5 17 L19 5" fill="none" stroke="var(--sage)" stroke-width="3" /></svg><span class="n">content</span><span class="m">utf-8, no bidi</span></div>
+          <div class="chk" id="c3"><svg width="22" height="22" viewBox="0 0 22 22"><path class="ck" d="M3 11.5 L8.5 17 L19 5" fill="none" stroke="var(--sage)" stroke-width="3" /></svg><span class="n">secrets</span><span class="m">0 matches</span></div>
+          <div class="chk" id="c4"><svg width="22" height="22" viewBox="0 0 22 22"><path class="ck" d="M3 11.5 L8.5 17 L19 5" fill="none" stroke="var(--sage)" stroke-width="3" /></svg><span class="n">frontmatter</span><span class="m">title updated status</span></div>
+          <span class="blocks" id="c5">would block:  <span class="r">../  .git  CON  U+202E</span></span>
+          <span class="blocks" id="c6">              <span class="r">private keys  tokens</span></span>
+        </div>
+        <div class="stage" id="st3">
+          <span class="sh">Owner terminal</span>
+          <span class="tl" id="t3a"><span class="p">$ </span>trove review 7f3a9c</span>
+          <span class="tl" id="t3b"><span class="p">$ </span>trove approve 7f3a9c</span>
+          <span class="tl" id="t3c"><span class="p">    </span>--digest <span class="k">9c1e04ab...4b07</span></span>
+          <div style="position: relative; margin-top: 14px">
+            <div id="dscan" class="abs"></div>
+            <span class="tl" id="t3d"><span class="m">reviewed  </span>9c1e04ab...4b07</span>
+            <span class="tl" id="t3e"><span class="m">stored    </span>9c1e04ab...4b07</span>
+          </div>
+          <div id="seal" class="abs"><span>=</span>MATCH</div>
+        </div>
+        <div class="stage" id="st4">
+          <span class="sh">kb.git  /  main</span>
+          <span class="tl" id="t4a"><span class="k">a41d2e0 </span> backup retention</span>
+          <span class="tl" id="t4b"><span class="m">Trove-Proposal: </span>7f3a9c</span>
+          <span class="tl" id="t4c"><span class="m">Trove-Digest:   </span>9c1e04ab...</span>
+          <span class="tl" id="t4d"><span class="m">Trove-Agent:    </span>laptop-agent</span>
+          <span class="tl" id="t4e"><span class="m">Trove-Approver: </span>owner</span>
+          <span class="tl" id="t4f"><span class="g">update-ref main: CAS ok</span></span>
+        </div>
+      </div>
+
+      <!-- audit chain -->
+      <div id="chainlbl" class="abs"><span class="lbl">audit.jsonl  /  hash chain</span><span id="verify">trove audit verify: ok</span></div>
+      <div class="blk abs" id="b0" style="left: 48px"><span class="e" style="color: var(--muted)">genesis</span><span class="h">prev <i>0000...0000</i></span></div>
+      <div class="lnk abs" id="l1" style="left: 244px"></div>
+      <div class="blk abs" id="b1" style="left: 275px"><span class="e">begin</span><span class="h">hash <i>3b81...c2</i></span></div>
+      <div class="lnk abs" id="l2" style="left: 471px"></div>
+      <div class="blk abs" id="b2" style="left: 502px"><span class="e">submit</span><span class="h">hash <i>e09a...17</i></span></div>
+      <div class="lnk abs" id="l3" style="left: 698px"></div>
+      <div class="blk abs" id="b3" style="left: 729px"><span class="e">approve-intent</span><span class="h">hash <i>5fd4...0e</i></span></div>
+      <div class="lnk abs" id="l4" style="left: 925px"></div>
+      <div class="blk abs" id="b4" style="left: 956px"><span class="e">approve</span><span class="h">hash <i>a7c3...91</i></span></div>
+    </div>
+
+    <script>
+      document.fonts.ready.then(function () {
+        var vars = (window.__hyperframes && window.__hyperframes.getVariables && window.__hyperframes.getVariables()) || {};
+        var root = document.getElementById("root");
+        if (vars.theme === "light") {
+          root.classList.add("light");
+          document.body.style.background = "#f3efe5";
+          document.documentElement.style.background = "#f3efe5";
+        }
+
+        var tl = gsap.timeline({ paused: true });
+        var E = "power3.out";
+        var css = getComputedStyle(root);
+        var brass = css.getPropertyValue("--brass").trim();
+        var muted = css.getPropertyValue("--muted").trim();
+        var text = css.getPropertyValue("--text").trim();
+
+        function rise(sel, at, d) {
+          tl.fromTo(sel, { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: d || 0.4, ease: E }, at);
+        }
+        function type(sel, at, d) {
+          tl.fromTo(sel, { clipPath: "inset(0 100% 0 0)" }, { clipPath: "inset(0 0% 0 0)", duration: d, ease: "steps(14)" }, at);
+        }
+        function block(i, at) {
+          tl.fromTo("#b" + i, { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.35, ease: E }, at);
+          tl.fromTo("#b" + i, { borderColor: brass }, { borderColor: css.getPropertyValue("--line").trim(), duration: 1.2, ease: "power2.out" }, at + 0.35);
+          if (i > 0) tl.fromTo("#l" + i, { scaleX: 0 }, { scaleX: 1, duration: 0.3, ease: "power2.out" }, at - 0.15);
+        }
+        function railTo(i, at) {
+          var step = document.getElementById("s" + i);
+          var rr = root.getBoundingClientRect();
+          var r = step.getBoundingClientRect();
+          tl.to("#railbar", { x: r.left - rr.left, scaleX: r.width / 100, duration: 0.5, ease: "power3.inOut" }, at);
+          tl.to(".step", { color: muted, duration: 0.3 }, at);
+          tl.to("#s" + i, { color: brass, duration: 0.3 }, at + 0.1);
+        }
+        function stageSwap(from, to, at) {
+          if (from) tl.to(from, { opacity: 0, x: -16, duration: 0.3, ease: "power2.in" }, at);
+          tl.fromTo(to, { opacity: 0, x: 16 }, { opacity: 1, x: 0, duration: 0.4, ease: E }, at + 0.3);
+        }
+
+        // initial hidden states
+        gsap.set(["#card", "#side", "#chainlbl"], { opacity: 0 });
+        gsap.set(["#d1", "#d2", "#d3", "#d4", "#file", "#digestrow", "#meta", "#cardhead"], { opacity: 0 });
+        gsap.set(".lnk", { scaleX: 0 });
+        gsap.set("#railbar", { x: 980, scaleX: 0 });
+
+        // 01 propose
+        tl.fromTo("#card", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.5, ease: E }, 0.3);
+        tl.fromTo("#side", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.5, ease: E }, 0.4);
+        tl.fromTo("#chainlbl", { opacity: 0 }, { opacity: 1, duration: 0.4 }, 0.5);
+        railTo(1, 0.5);
+        block(0, 0.6);
+        rise("#cardhead", 0.7);
+        rise("#meta", 0.85);
+        block(1, 1.0);
+        rise("#file", 1.1);
+        [1, 2, 3, 4].forEach(function (n, k) {
+          tl.set("#d" + n, { opacity: 1 }, 1.4 + k * 0.38);
+          type("#d" + n, 1.4 + k * 0.38, 0.34);
+        });
+        stageSwap(null, "#st1", 2.8);
+        gsap.set(["#t1a", "#t1b", "#t1c", "#t1d"], { opacity: 0 });
+        tl.set("#t1a", { opacity: 1 }, 3.1);
+        type("#t1a", 3.1, 0.4);
+        rise("#t1b", 3.5, 0.3);
+        rise("#t1c", 3.65, 0.3);
+        rise("#digestrow", 3.85);
+        tl.to("#pill-draft", { opacity: 0, y: -20, duration: 0.3, ease: "power2.in" }, 4.0);
+        tl.to("#pill", { borderColor: brass, duration: 0.3 }, 4.0);
+        tl.fromTo("#pill-pending", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.3, ease: E }, 4.15);
+        rise("#t1d", 3.8, 0.3);
+        block(2, 4.1);
+
+        // 02 validate
+        railTo(2, 4.8);
+        stageSwap("#st1", "#st2", 4.8);
+        gsap.set(["#c1", "#c2", "#c3", "#c4", "#c5", "#c6"], { opacity: 0 });
+        gsap.set(".ck", { strokeDasharray: 30, strokeDashoffset: 30 });
+        tl.fromTo("#scan", { opacity: 0, y: -6 }, { opacity: 1, duration: 0.2 }, 5.2);
+        tl.to("#scan", { y: 102, duration: 2.0, ease: "none" }, 5.3);
+        tl.to("#scan", { opacity: 0, duration: 0.3 }, 7.3);
+        ["#c1", "#c2", "#c3", "#c4"].forEach(function (s, k) {
+          var at = 5.4 + k * 0.5;
+          rise(s, at, 0.3);
+          tl.to(s + " .ck", { strokeDashoffset: 0, duration: 0.3, ease: "power2.out" }, at + 0.15);
+        });
+        rise("#c5", 6.8, 0.35);
+        rise("#c6", 6.95, 0.35);
+
+        // 03 approve
+        railTo(3, 8.4);
+        stageSwap("#st2", "#st3", 8.4);
+        gsap.set(["#t3a", "#t3b", "#t3c", "#t3d", "#t3e", "#seal"], { opacity: 0 });
+        tl.set("#t3a", { opacity: 1 }, 8.9);
+        type("#t3a", 8.9, 0.45);
+        tl.set("#t3b", { opacity: 1 }, 9.5);
+        type("#t3b", 9.5, 0.45);
+        tl.set("#t3c", { opacity: 1 }, 9.95);
+        type("#t3c", 9.95, 0.5);
+        rise("#t3d", 10.6, 0.3);
+        rise("#t3e", 10.8, 0.3);
+        tl.fromTo("#dscan", { width: 0, height: 68 }, { width: 340, duration: 0.8, ease: "power1.inOut" }, 11.1);
+        tl.to("#dscan", { opacity: 0, duration: 0.3 }, 12.0);
+        tl.fromTo("#seal", { opacity: 0, scale: 0.8 }, { opacity: 1, scale: 1, duration: 0.35, ease: "back.out(2.2)" }, 11.9);
+        block(3, 12.1);
+
+        // 04 commit
+        railTo(4, 12.8);
+        stageSwap("#st3", "#st4", 12.8);
+        gsap.set(["#t4a", "#t4b", "#t4c", "#t4d", "#t4e", "#t4f"], { opacity: 0 });
+        ["#t4a", "#t4b", "#t4c", "#t4d", "#t4e", "#t4f"].forEach(function (s, k) {
+          rise(s, 13.2 + k * 0.14, 0.3);
+        });
+        tl.to("#pill-pending", { opacity: 0, y: -20, duration: 0.3, ease: "power2.in" }, 13.2);
+        tl.to("#pill", { borderColor: css.getPropertyValue("--sage").trim(), duration: 0.3 }, 13.2);
+        tl.fromTo("#pill-applied", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.3, ease: E }, 13.35);
+        tl.fromTo("#cardborder", { opacity: 0 }, { opacity: 1, duration: 0.4 }, 13.35);
+        block(4, 13.4);
+        tl.fromTo("#verify", { opacity: 0, x: -8 }, { opacity: 1, x: 0, duration: 0.4, ease: E }, 14.0);
+
+        // outro, back to the empty first frame so the loop is seamless
+        var all = ["#card", "#cardborder", "#side", "#chainlbl", ".blk", ".lnk", "#railbar"];
+        tl.to(all, { opacity: 0, duration: 0.6, ease: "power2.in" }, 16.6);
+        tl.to(".step", { color: muted, duration: 0.5 }, 16.6);
+        tl.set({}, {}, 18);
+
+        window.__timelines["main"] = tl;
+      });
+    </script>
+  </body>
+</html>

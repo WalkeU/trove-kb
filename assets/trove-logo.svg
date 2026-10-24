@@ -1,0 +1,27 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" width="250" height="56" viewBox="0 0 250 56" fill="none" role="img" aria-label="Trove">
+  <style>
+    .ink { stroke: #1c1b18; }
+    .sub { stroke: #6f6a5f; }
+    .brass { stroke: #9a6200; }
+    .brassf { fill: #9a6200; }
+    @media (prefers-color-scheme: dark) {
+      .ink { stroke: #ebe5d6; }
+      .sub { stroke: #a19d93; }
+      .brass { stroke: #e3a83c; }
+      .brassf { fill: #e3a83c; }
+    }
+  </style>
+  <g transform="translate(2 4)">
+    <rect class="ink" x="4" y="8" width="40" height="34" rx="5" stroke-width="4"/>
+    <path class="ink" d="M4 20 H44" stroke-width="4"/>
+    <path class="sub" d="M13 29 H35 M13 35 H27" stroke-width="3"/>
+    <rect class="brassf" x="18.5" y="14.5" width="11" height="11" transform="rotate(45 24 20)"/>
+  </g>
+  <g transform="translate(66 10) scale(1.06)" stroke-width="5" stroke-linejoin="miter">
+    <path class="ink" d="M0 2.5 H26 M13 2.5 V34"/>
+    <path class="ink" d="M38.5 34 V2.5 H51 A8 8 0 0 1 51 18.5 H38.5 M50 18.5 L60 34"/>
+    <rect class="brass" x="72.5" y="2.5" width="23" height="29" rx="8"/>
+    <path class="ink" d="M106 2.5 L119 28 L132 2.5"/>
+    <path class="ink" d="M164 2.5 H144.5 V31.5 H164 M144.5 17 H160"/>
+  </g>
+</svg>

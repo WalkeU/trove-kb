@@ -1,0 +1,5 @@
+[
+  {"name": "owner", "role": "approver", "sha256": "REPLACE_WITH_OUTPUT_OF_trove_token_new"},
+  {"name": "laptop-agent", "role": "agent", "sha256": "REPLACE_WITH_OUTPUT_OF_trove_token_new"},
+  {"name": "docs-reader", "role": "reader", "sha256": "REPLACE_WITH_OUTPUT_OF_trove_token_new"}
+]

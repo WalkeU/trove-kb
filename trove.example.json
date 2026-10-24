@@ -1,0 +1,30 @@
+{
+  "listen": "0.0.0.0:8470",
+  "data_dir": "/data",
+  "tls_cert": "",
+  "tls_key": "",
+  "bot_name": "trove-bot",
+  "bot_email": "trove-bot@example.com",
+  "tokens_file": "tokens.json",
+  "instructions_file": "",
+  "limits": {
+    "per_agent": 5,
+    "total": 20,
+    "ttl_hours": 168,
+    "max_file_bytes": 262144,
+    "max_total_bytes": 1048576,
+    "max_files": 50,
+    "large_diff_lines": 300,
+    "max_import_bytes": 268435456,
+    "agent_bytes_per_day": 20971520,
+    "agent_begins_per_day": 100,
+    "archive_memory_days": 30
+  },
+  "validation": {
+    "allowed_dirs": ["infra", "projects", "apps", "claude", "snippets", "runbooks", "decisions"],
+    "allow_root_files": true,
+    "frontmatter_fields": ["title", "updated", "status"],
+    "frontmatter_exempt": ["INDEX.md", "README.md"],
+    "extra_secret_patterns": []
+  }
+}

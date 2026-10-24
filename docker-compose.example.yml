@@ -1,0 +1,22 @@
+# Example only, not a production setup. Adjust ports, paths and the
+# network exposure to your environment (a VPN or reverse proxy with TLS
+# is recommended; Trove itself makes no assumption about the network).
+services:
+  trove:
+    build: .
+    image: trove:local
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    pids_limit: 64
+    tmpfs:
+      - /tmp
+    ports:
+      - "127.0.0.1:8470:8470"
+    volumes:
+      - ./data:/data
+      - ./config:/config:ro
+    # No docker socket, no host network.

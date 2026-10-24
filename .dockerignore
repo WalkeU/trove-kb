@@ -1,0 +1,13 @@
+# Keep secrets and local state out of the build context.
+.git
+.env
+.env.*
+!.env.example
+data/
+config/
+dist/
+tokens.json
+trove.json
+.trove/
+*.test
+coverage.out

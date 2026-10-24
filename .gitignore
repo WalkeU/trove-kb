@@ -1,0 +1,15 @@
+/dist/
+/trove
+/trove.exe
+/data/
+/config/
+.env
+tokens.json
+trove.json
+.trove/
+*.test
+coverage.out
+
+# HyperFrames render state (assets/src)
+.hyperframes/
+
