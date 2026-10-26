@@ -60,6 +60,9 @@ type Config struct {
 	InstructionsFile string            `json:"instructions_file"`
 	Limits           Limits            `json:"limits"`
 	Validation       Validation        `json:"validation"`
+	// DisableUI turns off the built-in web UI under /ui/ (static files;
+	// the API stays the same either way).
+	DisableUI bool `json:"disable_ui,omitempty"`
 }
 
 // Default returns a configuration with the defaults of the first release.

@@ -32,7 +32,7 @@
 - Ha az agent közvetlenül **írhatja** ezt a tudást, egy hamis tény, egy kiszivárgott titok vagy egy prompt injection oda kerül, ahonnan minden későbbi agent olvas.
 - Egy személyes vagy kis csapatos tudásbázishoz a pull request nehézkes, az MCP kliens "megerősítés" ablaka pedig nem biztonsági határ.
 
-A Trove-ban az olvasás szabad, minden módosítás megfagyasztott javaslat, amit egy ember a saját termináljáról hagy jóvá.
+A Trove-ban az olvasás szabad, minden módosítás megfagyasztott javaslat, amit egy ember a saját termináljáról (vagy a beépített webes felületen) hagy jóvá.
 
 ## Hogyan működik
 
@@ -220,6 +220,17 @@ trove audit verify --remote          # approver
 
 Az utolsó hash-t rendszeresen mentsd máshová: csak így derül ki, ha a napló végét levágták.
 
+## Webes felület
+
+A `trove serve` egy kis böngészős felületet is kiszolgál a **`/ui/`** útvonalon (pl. `http://127.0.0.1:8470/ui/`). Sima HTML, CSS és JavaScript, a binárisba ágyazva: nincs Node build, nincs CDN, nincs külső script. A `/`, a `/healthz` és a `/v1` API nem változott.
+
+- **Olvasás:** mappafa, megjelenített markdown (vagy a forrás), fájlnév-szűrő, tartalomkeresés (a meglévő `/v1/search`), `[[wikilinkek]]` és relatív linkek a jegyzetek között, világos és sötét téma, telefonon is használható.
+- **Jóváhagyás:** függő javaslatok, egy javaslat teljes diffje (soha nem csonkolt, ugyanaz a szöveg, mint a `trove review`-ban), elavult- és átfedés-jelzés, figyelmeztetések, digest. Az **Approve** pontosan a képernyőn látható digestet küldi (mint a `trove approve <id> --digest`), előtte újra lekéri a review-t, és megtagadja, ha bármi változott. A **Reject**-hez indoklás kell. Nincs "approve all". Elavult javaslat nem hagyható jóvá.
+- **Belépés:** token beillesztése. Reader tokennel az olvasó nézet, az owner (approver) tokennel mindkét nézet érhető el; agent tokent a felület nem fogad el. A token a lap memóriájában marad, vagy a jelölőnégyzettel ennek a fülnek a `sessionStorage`-ában; soha nem `localStorage`-ban vagy cookie-ban. 30 perc tétlenség után a lap lezár.
+- **Biztonsági modell:** minden művelet a meglévő API-ra megy `Authorization: Bearer` fejléccel, így minden jogosultságot a szerver ellenőriz; a felületnek nincs saját végpontja. A KB tartalmát ellenségesnek tekinti: soha nem értelmezi HTML-ként (beépített, kicsi markdown-megjelenítő, `textContent`-tel épít DOM-ot), link csak KB-jegyzetre vagy `http(s)` címre mutathat (`rel="noopener noreferrer"`), a tartalomból kép és keret nem töltődik be, a láthatatlan karakterek `\u{....}` alakban látszanak. Szigorú CSP (`default-src 'none'; script-src 'self'; ...`, inline kód nélkül), valamint `nosniff`, `no-referrer`, `no-store`, `frame-ancestors 'none'` fejlécek.
+- **Amit nem véd:** ami a böngészőt irányítja (böngészőt vezérlő AI agent, rosszindulatú bővítmény, kompromittált OS), az kiolvashatja a tokent és rákattinthat az Approve-ra. Az owner tokent csak olyan böngészőprofilban használd, amit agent vagy nem megbízható bővítmény nem irányít; különben maradj a terminálos `trove review`-nál. Részletek: [SECURITY.md](SECURITY.md).
+- Kikapcsolás: `"disable_ui": true` a `trove.json`-ban.
+
 ## MCP
 
 A `trove mcp` stdio MCP szerver agent (vagy reader) tokennel; **approver tokennel megtagadja az indulást**.
@@ -245,6 +256,7 @@ Szerver: a `trove init` generálja, vagy a [`trove.example.json`](trove.example.
 | `validation.allowed_dirs` | `infra`, `projects`, `apps`, `claude`, `snippets`, `runbooks`, `decisions` | felső szintű mappák; üres lista konfigurációs hiba |
 | `validation.frontmatter_fields` | `title`, `updated`, `status` | kötelező frontmatter (`INDEX.md`, `README.md` kivétel) |
 | `validation.extra_secret_patterns` | `[]` | saját titok-minták |
+| `disable_ui` | `false` | `true` kikapcsolja a `/ui/` alatti webes felületet |
 
 Kliens: környezeti változók (lásd [`.env.example`](.env.example)): `TROVE_URL`, `TROVE_DIR`, a fenti token-változók, és `TROVE_INSECURE_HTTP=1` tudatos, VPN-en belüli sima http-hez.
 
@@ -270,7 +282,7 @@ Az image nem root felhasználóként fut (Alpine + git), csak olvasható root f�
 
 ## Korlátok és roadmap
 
-Az első kiadás korlátai: nincs TOTP-s második jóváhagyási csatorna, nincs értesítés, nincs HTTP rate limit, csak standard library-s Unicode-kezelés.
+Az első kiadás korlátai: nincs TOTP-s második jóváhagyási csatorna, nincs értesítés, nincs HTTP rate limit, csak standard library-s Unicode-kezelés, a webes felületen nincs szerkesztés.
 
 Tervben (a projekttervből, még nincs megépítve):
 
@@ -279,7 +291,8 @@ Tervben (a projekttervből, még nincs megépítve):
 - [ ] Értesítés beküldéskor (Telegram vagy hasonló) jóváhagyás gombbal
 - [ ] TOTP-s, digesthez kötött jóváhagyás agenten át (2. csatorna)
 - [ ] Keresőindex (először SQLite FTS5)
-- [ ] Webes, csak olvasható review-nézet
+- [x] Webes felület, 1-2. fázis: olvasó és jóváhagyó nézet (`/ui/`)
+- [ ] Webes felület, 3. fázis: szerkesztés (javaslat a böngészőből)
 - [ ] Több KB egy szerveren
 - [ ] Erősebb audit-garancia (külön naplózó folyamat, append-only attribútum, távoli gyűjtő)
 
@@ -297,6 +310,12 @@ Go nélkül Dockerrel:
 
 ```sh
 docker run --rm -v "$PWD:/src" -w /src golang:1.22 sh -c "gofmt -l . ; go vet ./... && go test -count=1 -race ./..."
+```
+
+A webes felület markdown-megjelenítőjének és link-szabályainak saját tesztjei vannak (a Node csak a futtatásukhoz kell, a buildhez soha):
+
+```sh
+docker run --rm -v "$PWD:/src" -w /src node:20-alpine node --test internal/webui/jstest/
 ```
 
 A tesztek ideiglenes git repókat hoznak létre, ehhez `git` kell. A hero-animáció [HyperFrames](https://www.npmjs.com/package/hyperframes) kompozíció az `assets/src/hero/` alatt (újrarenderelési jegyzet a `<head>`-ben).

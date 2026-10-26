@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="light dark">
+<title>Trove</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="app.css">
+<script type="module" src="app.js"></script>
+</head>
+<body>
+<header class="top">
+  <button id="menu" class="icon-btn only-narrow" type="button" aria-controls="side" aria-expanded="false" hidden>Files</button>
+  <a class="brand" href="#/">Trove</a>
+  <nav id="nav" hidden>
+    <a id="nav-read" href="#/">Read</a>
+    <a id="nav-review" href="#/review" hidden>Approvals <span id="pending-count" class="count"></span></a>
+  </nav>
+  <span class="spacer"></span>
+  <span id="who" class="who" hidden></span>
+  <button id="lock" class="btn small" type="button" hidden>Lock</button>
+</header>
+
+<main id="login" class="login" hidden>
+  <h1>Trove</h1>
+  <p>Paste a reader token to browse, or the owner (approver) token to browse and decide on proposals.</p>
+  <label for="token">Token</label>
+  <input id="token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false">
+  <label class="check"><input id="remember" type="checkbox"> Keep it for this browser tab (sessionStorage, cleared when the tab closes)</label>
+  <button id="login-btn" class="btn primary" type="button">Unlock</button>
+  <p id="login-error" class="error" role="alert"></p>
+  <ul class="fineprint">
+    <li>The token is kept in this page's memory only (or in this tab's sessionStorage if you tick the box). Never in localStorage or a cookie.</li>
+    <li>The page locks itself after 30 minutes without activity.</li>
+    <li>Agent tokens are not accepted here.</li>
+    <li>Do not use the owner token in a browser that an AI agent or a browser extension you do not trust can control.</li>
+  </ul>
+</main>
+
+<div id="app" class="app" hidden>
+  <aside id="side" class="side">
+    <input id="filter" type="search" placeholder="Filter file names" aria-label="Filter file names" autocomplete="off" spellcheck="false">
+    <div class="search-row">
+      <input id="search" type="search" placeholder="Search content" aria-label="Search content" autocomplete="off" spellcheck="false">
+      <button id="search-btn" class="btn small" type="button">Search</button>
+    </div>
+    <nav id="tree" class="tree" aria-label="Knowledge base files"></nav>
+  </aside>
+  <section id="view" class="view" aria-live="polite"></section>
+</div>
+</body>
+</html>

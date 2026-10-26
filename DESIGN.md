@@ -20,6 +20,7 @@ Short technical design. The requirements live in the project plan; this file rec
 | `internal/auth` | token hashing, roles, constant-time lookup |
 | `internal/config` | server config (JSON) |
 | `internal/mcp` | stdio MCP gateway over the HTTP API (agent tools only) |
+| `internal/webui` | embedded browser UI under `/ui/` (static HTML, CSS, vanilla JS modules) |
 
 ## Data directory
 
@@ -51,6 +52,20 @@ Short technical design. The requirements live in the project plan; this file rec
 | `POST /import?mode=tar|bundle` | approver | one-time bootstrap, only into an empty repo |
 | `GET /audit/verify` | approver | |
 
+Outside `/v1`: `GET /healthz` (no token), `GET /ui/...` (static UI, no token, see below). Every other path, `/` included, still needs a token. All responses carry `nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`, `Cache-Control: no-store` and same-origin COOP/CORP; API responses also `Content-Security-Policy: default-src 'none'; ...; sandbox`. No CORS headers.
+
+## Web UI (`/ui/`, phases 1-2)
+
+- `internal/webui` embeds `index.html`, `app.css`, `app.js`, `md.js`, `render.js`, `favicon.svg` with `go:embed`. A fixed name table serves them (no directory listing, no fallback, GET/HEAD only); `/ui` redirects to `/ui/`. `"disable_ui": true` turns it off. The handler runs before token authentication because it only returns these static files.
+- No server-side logic and no new endpoint: the UI calls the existing API with `Authorization: Bearer` (`../v1/` relative, so a reverse proxy sub-path works). Read view: `GET /tree`, `/file`, `/search`, `/status`. Approval view: `GET /proposals?state=pending`, `GET /proposals/{id}/review`, `POST .../approve` with the digest of the review on screen, `POST .../reject` with a reason. Roles are checked by the API; the UI refuses agent tokens only for clarity.
+- Approve flow: the review response on screen is kept as a JSON snapshot. On Approve the UI fetches the review again and sends nothing if the digest, state, `ready`/`stale` status or any byte of the response differs; stale proposals have the button disabled. The server's own approve checks are unchanged.
+- Rendering: `md.js` parses markdown into plain objects (frontmatter shown as text, headings, paragraphs, lists with tasks, fenced code, quotes, tables, inline code, emphasis, links, `[[wikilinks]]`, autolinks); `render.js` turns them into DOM nodes with `createElement`/`textContent` only. Raw HTML stays text; images become `[image: alt]`; links resolve to `#/read/<path>` (files in the tree) or a normalized `http(s)` URL, everything else is text. Invisible characters (the `safe.IsInvisible` classes) are shown as `\u{....}`. Delimiter lookups are cached so hostile input stays linear; nesting is capped at 8 levels.
+- Search: the server's `GET /search` (git grep, first 100 hits) plus a client-side file name filter over the already loaded tree; no index.
+- Routing is in the URL fragment (`#/read/<path>`, `#/search?q=`, `#/review/<id>`); a route never triggers a write.
+- Token: a variable, or the tab's `sessionStorage` on request; cleared on Lock, on a 401, and after 30 minutes idle.
+- Tests: `internal/webui` (headers, CSP, asset table, no inline code, banned DOM sinks, href assignments, token handling), `internal/server/ui_test.go` (UI without token, API unchanged, headers, no CORS, roles, digest), `internal/webui/jstest` (Node, run in Docker: parser, link rules, hostile markdown against a fake DOM, invisible characters, performance).
+- Not in this round: editing (phase 3).
+
 ## Formats
 
 Proposal (`proposals/<id>.json`): `id, state, topic, agent, scope[], base, supersedes, superseded_by, changes[{path, op: put|delete, content}], digest, warnings[], created_at, submitted_at, updated_at, applied_commit, decided_by, reason`.
@@ -81,6 +96,7 @@ Role check, state `pending`, digest equal (constant time), digest recomputed fro
 8. (Superseded) Import secret findings now block, see below.
 9. `INDEX.md` and `README.md` are frontmatter-exempt by default (a typical KB index has no frontmatter).
 10. Requires Go 1.22+ (method and wildcard patterns of `http.ServeMux`).
+11. The plan listed a "read-only web review view, approval on a separate channel". The built-in UI (2026-10-26) also approves and rejects, with the owner token in the browser and the digest of the review on screen; the trade-off (a browser that an agent or extension controls can approve) is documented in SECURITY.md, and the UI can be turned off.
 
 ## Changes after the security reviews (2026-10-24)
 

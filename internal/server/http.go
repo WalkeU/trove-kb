@@ -18,6 +18,7 @@ import (
 	"trove/internal/auth"
 	"trove/internal/config"
 	"trove/internal/store"
+	"trove/internal/webui"
 )
 
 type ctxKey struct{}
@@ -89,10 +90,22 @@ func NewHandler(e *Engine, keys *auth.Keyring, logger *log.Logger) *Handler {
 	return h
 }
 
+// apiCSP forbids everything for API responses: a JSON or markdown body
+// must never be rendered or executed as a document.
+const apiCSP = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; sandbox"
+
 // ServeHTTP authenticates every request, then dispatches it.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.Header().Set("Cache-Control", "no-store")
+	// Shared hardening headers (nosniff, no-referrer, no-store, no
+	// framing); the UI sets its own, stricter CSP for its pages.
+	webui.SetSecurityHeaders(w.Header())
+	if !h.cfg.DisableUI && webui.Match(r.URL.Path) {
+		// Static files only, no token needed: every action the UI takes
+		// is a request to /v1 below, with the token the user pasted.
+		webui.Handler().ServeHTTP(w, r)
+		return
+	}
+	w.Header().Set("Content-Security-Policy", apiCSP)
 	if r.URL.Path == "/healthz" {
 		w.Write([]byte("ok\n"))
 		return
