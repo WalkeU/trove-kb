@@ -52,19 +52,21 @@ Short technical design. The requirements live in the project plan; this file rec
 | `POST /import?mode=tar|bundle` | approver | one-time bootstrap, only into an empty repo |
 | `GET /audit/verify` | approver | |
 
-Outside `/v1`: `GET /healthz` (no token), `GET /ui/...` (static UI, no token, see below). Every other path, `/` included, still needs a token. All responses carry `nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`, `Cache-Control: no-store` and same-origin COOP/CORP; API responses also `Content-Security-Policy: default-src 'none'; ...; sandbox`. No CORS headers.
+Outside `/v1`: `GET /healthz` (no token), `GET /ui/...` (static UI) and browser authentication under `/auth/`. The API accepts bearer tokens or owner browser cookies; cookie mutations require CSRF and Origin checks. All responses carry `nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`, `Cache-Control: no-store` and same-origin COOP/CORP; API responses also `Content-Security-Policy: default-src 'none'; ...; sandbox`. No CORS headers.
 
-## Web UI (`/ui/`, phases 1-2)
+## Web UI (`/ui/`)
 
-- `internal/webui` embeds `index.html`, `app.css`, `app.js`, `md.js`, `render.js`, `favicon.svg` with `go:embed`. A fixed name table serves them (no directory listing, no fallback, GET/HEAD only); `/ui` redirects to `/ui/`. `"disable_ui": true` turns it off. The handler runs before token authentication because it only returns these static files.
-- No server-side logic and no new endpoint: the UI calls the existing API with `Authorization: Bearer` (`../v1/` relative, so a reverse proxy sub-path works). Read view: `GET /tree`, `/file`, `/search`, `/status`. Approval view: `GET /proposals?state=pending`, `GET /proposals/{id}/review`, `POST .../approve` with the digest of the review on screen, `POST .../reject` with a reason. Roles are checked by the API; the UI refuses agent tokens only for clarity.
-- Approve flow: the review response on screen is kept as a JSON snapshot. On Approve the UI fetches the review again and sends nothing if the digest, state, `ready`/`stale` status or any byte of the response differs; stale proposals have the button disabled. The server's own approve checks are unchanged.
-- Rendering: `md.js` parses markdown into plain objects (frontmatter shown as text, headings, paragraphs, lists with tasks, fenced code, quotes, tables, inline code, emphasis, links, `[[wikilinks]]`, autolinks); `render.js` turns them into DOM nodes with `createElement`/`textContent` only. Raw HTML stays text; images become `[image: alt]`; links resolve to `#/read/<path>` (files in the tree) or a normalized `http(s)` URL, everything else is text. Invisible characters (the `safe.IsInvisible` classes) are shown as `\u{....}`. Delimiter lookups are cached so hostile input stays linear; nesting is capped at 8 levels.
-- Search: the server's `GET /search` (git grep, first 100 hits) plus a client-side file name filter over the already loaded tree; no index.
-- Routing is in the URL fragment (`#/read/<path>`, `#/search?q=`, `#/review/<id>`); a route never triggers a write.
-- Token: a variable, or the tab's `sessionStorage` on request; cleared on Lock, on a 401, and after 30 minutes idle.
-- Tests: `internal/webui` (headers, CSP, asset table, no inline code, banned DOM sinks, href assignments, token handling), `internal/server/ui_test.go` (UI without token, API unchanged, headers, no CORS, roles, digest), `internal/webui/jstest` (Node, run in Docker: parser, link rules, hostile markdown against a fake DOM, invisible characters, performance).
-- Not in this round: editing (phase 3).
+- Embedded static assets are served before authentication, GET/HEAD only. The UI calls the existing `/v1` API using cookie authentication; rendering, complete review snapshots and digest checks remain unchanged.
+- Browser auth lives in `internal/server/browser_auth.go`. `GET /auth/state` is public. First setup requires a configured approver bearer token plus matching new passwords (15-128 Unicode characters); it atomically stores the owner identity and Argon2id hash in `<data_dir>/browser-auth.json`. Setup cannot overwrite configured credentials.
+- Password hashing: Argon2id, version implied by state version 1, 19 MiB memory, 2 iterations, parallelism 1, 16-byte random salt and 32-byte result. Login/setup/password change have a two-worker semaphore, per-peer attempt windows and a global attempt limit. No password or raw token is logged.
+- Each browser device has a random 128-bit family ID, independent 256-bit opaque access/refresh secrets, a CSRF secret, creation time and expiration. Only hashes are persisted. Access lasts 10 minutes; refresh has a fixed 7-day expiry. At most 16 families are retained. State updates are copied, atomically persisted, then swapped under one mutex.
+- Access and refresh cookies are `__Host-` prefixed, host-only, `Secure; HttpOnly; SameSite=Strict; Path=/`. The separate CSRF cookie is readable by JavaScript and checked against both its stored hash and the custom request header. Credentials are never placed in localStorage, sessionStorage, URLs or JavaScript variables.
+- Refresh rotates both authentication secrets and records consumed refresh hashes; reuse revokes the whole family. A 5-second in-memory cache can return the identical rotated response only for the exact previous access+refresh pair and matching CSRF value, covering concurrent requests/retries without accepting an old refresh token alone. The retry cache is not persisted. Expired and logged-out families cannot refresh.
+- All browser-authenticated traffic requires direct TLS, or `X-Forwarded-Proto: https` from a peer in explicitly configured `web_trusted_proxies` CIDRs. Origin checks use `web_origin`, or `https://` plus the incoming Host; forwarded Host is never trusted. All cookie-authenticated mutations and auth POSTs require exact Origin, and session mutations also require CSRF. No CORS.
+- `GET /auth/session` restores UI state. `POST /auth/logout`, `/auth/logout-all` and `/auth/password` revoke persisted families. Password changes require the current password and revoke every family. The Account page exposes these operations; the UI also logs out after 30 minutes idle.
+- Existing bearer API auth remains for agents/readers and non-decision owner operations. Once browser credentials exist, approver bearer requests to `/approve` and `/reject` are refused, closing the old direct decision path. A configured browser-auth state load failure stops production startup.
+- Recovery is a trusted local console operation: stop the instance, move `browser-auth.json` out of data, start and bootstrap with the offline owner token. Rebuilds do not reset credentials. Password authentication does not enforce human presence when an agent controls an authenticated browser; that browser remains a trust boundary.
+- Markdown parsing, safe DOM construction, link policy, CSP, full diffs and proposal digest verification remain as before. Editing is still outside this phase.
 
 ## Formats
 
@@ -96,7 +98,7 @@ Role check, state `pending`, digest equal (constant time), digest recomputed fro
 8. (Superseded) Import secret findings now block, see below.
 9. `INDEX.md` and `README.md` are frontmatter-exempt by default (a typical KB index has no frontmatter).
 10. Requires Go 1.22+ (method and wildcard patterns of `http.ServeMux`).
-11. The plan listed a "read-only web review view, approval on a separate channel". The built-in UI (2026-10-26) also approves and rejects, with the owner token in the browser and the digest of the review on screen; the trade-off (a browser that an agent or extension controls can approve) is documented in SECURITY.md, and the UI can be turned off.
+11. The built-in UI also approves and rejects using the owner password session and exact reviewed digest. After browser setup, raw approver tokens cannot bypass that decision path. A browser controlled by an agent can still act as its logged-in owner; see SECURITY.md.
 
 ## Changes after the security reviews (2026-10-24)
 

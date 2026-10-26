@@ -1,34 +1,26 @@
-// Trove UI: login, routing, reader view and approval view.
-//
-// Security rules of this file (checked by tests in webui_test.go):
-// - the token lives in a variable, optionally in sessionStorage; never
-//   localStorage, never a cookie, never the URL;
-// - every request goes to the existing /v1 API with "Authorization: Bearer";
-//   the server does all permission checks;
-// - every string from the server is untrusted and is rendered with
-//   textContent (render.js); no HTML is ever parsed from data;
-// - approve sends the digest of the review that is on the screen, after
-//   re-fetching the review and checking that nothing changed.
+// Trove browser UI. Authentication credentials live only in HttpOnly
+// cookies managed by the server. JavaScript reads a separate CSRF value,
+// never the access token, refresh token or password after submission.
 
 import { parse, filterPaths, classifyDiffLine } from "./md.js";
 import { el, appendText, appendEscaped, renderBlocks, readHref } from "./render.js";
 
 const API = "../v1/";
-const SESSION_KEY = "trove.token";
+const AUTH = "../auth/";
 const IDLE_MS = 30 * 60 * 1000;
-
 const state = {
-  token: "",
+  authenticated: false,
+  setupRequired: false,
   role: "",
   actor: "",
   files: [],
   fileSet: new Set(),
   commit: "",
   lastActive: Date.now(),
-  shown: null, // review on screen: {id, digest, snapshot}
-  seq: 0, // route generation, drops late responses
+  shown: null,
+  seq: 0,
 };
-
+let refreshing = null;
 const $ = (id) => document.getElementById(id);
 
 class ApiError extends Error {
@@ -39,34 +31,19 @@ class ApiError extends Error {
   }
 }
 
-// ---- token handling ----
-
-function sessionGet() {
-  try {
-    return sessionStorage.getItem(SESSION_KEY) || "";
-  } catch {
-    return "";
-  }
-}
-
-function sessionSet(v) {
-  try {
-    if (v) sessionStorage.setItem(SESSION_KEY, v);
-    else sessionStorage.removeItem(SESSION_KEY);
-  } catch {
-    // storage disabled: memory only
-  }
+function csrfToken() {
+  const cookie = document.cookie.split(";").map((s) => s.trim()).find((s) => s.startsWith("__Host-trove-csrf="));
+  return cookie ? cookie.slice("__Host-trove-csrf=".length) : "";
 }
 
 function lock(message) {
-  state.token = "";
+  state.authenticated = false;
   state.role = "";
   state.actor = "";
   state.files = [];
   state.fileSet = new Set();
   state.shown = null;
   state.seq++;
-  sessionSet("");
   $("view").replaceChildren();
   $("tree").replaceChildren();
   $("app").hidden = true;
@@ -76,96 +53,146 @@ function lock(message) {
   $("menu").hidden = true;
   $("login").hidden = false;
   $("login-error").textContent = message || "";
-  $("token").value = "";
-  $("token").focus();
+  for (const id of ["owner-token", "password", "password-confirm"]) $(id).value = "";
+  $("password").focus();
 }
 
-async function unlock(token, remember) {
-  token = token.trim();
-  if (!token) {
-    $("login-error").textContent = "Paste a token first.";
-    return;
+async function request(base, method, path, body, extraHeaders = {}) {
+  const headers = { Accept: "application/json", ...extraHeaders };
+  if (method !== "GET" && method !== "HEAD") headers["X-Trove-CSRF"] = csrfToken();
+  const init = { method, headers, credentials: "same-origin", cache: "no-store", redirect: "error", referrerPolicy: "no-referrer", mode: "same-origin" };
+  if (body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    init.body = JSON.stringify(body);
   }
-  state.token = token;
-  let st;
-  try {
-    st = await api("GET", "status");
-  } catch (e) {
-    lock(e.status === 401 ? "The server did not accept this token." : "Could not reach the server: " + e.message);
-    return;
+  let response;
+  try { response = await fetch(base + path, init); }
+  catch { throw new ApiError(0, "network error"); }
+  let data = null;
+  if ((response.headers.get("Content-Type") || "").startsWith("application/json")) {
+    try { data = await response.json(); } catch { /* handled below */ }
   }
-  if (st.role !== "reader" && st.role !== "approver") {
-    lock("Agent tokens are not accepted in the UI. Use a reader token, or the owner (approver) token.");
-    return;
+  if (!response.ok) {
+    throw new ApiError(response.status, (data && typeof data.error === "string" && data.error) || "HTTP " + response.status, data && Array.isArray(data.details) ? data.details : []);
   }
-  state.role = st.role;
-  state.actor = st.actor;
-  sessionSet(remember ? token : "");
-  $("token").value = "";
+  if (data === null) throw new ApiError(response.status, "unexpected response type");
+  return data;
+}
+
+function authRequest(method, path, body, headers) {
+  return request(AUTH, method, path, body, headers);
+}
+
+async function refreshSession() {
+  if (!refreshing) {
+    refreshing = authRequest("POST", "refresh", {}).finally(() => { refreshing = null; });
+  }
+  return refreshing;
+}
+
+async function api(method, path, body) {
+  try { return await request(API, method, path, body); }
+  catch (error) {
+    if (error.status !== 401 || !state.authenticated) throw error;
+    try {
+      await refreshSession();
+      return await request(API, method, path, body);
+    } catch (refreshError) {
+      lock("Your session expired. Sign in again.");
+      throw refreshError;
+    }
+  }
+}
+
+async function enterApp() {
+  state.authenticated = true;
+  const status = await api("GET", "status");
+  state.role = status.role;
+  state.actor = status.actor;
   $("login").hidden = true;
   $("app").hidden = false;
   $("nav").hidden = false;
   $("lock").hidden = false;
   $("menu").hidden = false;
-  const who = $("who");
-  who.replaceChildren();
-  appendText(who, st.actor + " (" + st.role + ")");
-  who.hidden = false;
-  $("nav-review").hidden = st.role !== "approver";
-  setPending(st.pending);
+  $("who").replaceChildren();
+  appendText($("who"), status.actor + " (" + status.role + ")");
+  $("who").hidden = false;
+  $("nav-review").hidden = status.role !== "approver";
+  setPending(status.pending);
   touch();
   await loadTree();
   route();
 }
 
-function touch() {
-  state.lastActive = Date.now();
+async function signIn() {
+  if (location.protocol !== "https:") {
+    $("login-error").textContent = "Open the HTTPS address to sign in.";
+    return;
+  }
+  const button = $("login-btn");
+  button.disabled = true;
+  $("login-error").textContent = "";
+  const password = $("password").value;
+  const confirm = $("password-confirm").value;
+  const ownerToken = $("owner-token").value.trim();
+  try {
+    if (state.setupRequired) {
+      if (!ownerToken) throw new Error("Enter the owner token for the first setup.");
+      if (password !== confirm) throw new Error("The passwords do not match.");
+      await authRequest("POST", "setup", { password, password_confirm: confirm }, { Authorization: "Bearer " + ownerToken });
+      state.setupRequired = false;
+    } else {
+      await authRequest("POST", "login", { password });
+    }
+    for (const id of ["owner-token", "password", "password-confirm"]) $(id).value = "";
+    await enterApp();
+  } catch (error) {
+    lock(error.message);
+    await loadAuthState(false);
+  } finally {
+    button.disabled = location.protocol !== "https:";
+  }
 }
+
+async function signOut(message = "Signed out.") {
+  try { await authRequest("POST", "logout", {}); }
+  catch { /* the page must also lock when its server session is gone */ }
+  lock(message);
+  await loadAuthState(false);
+}
+
+async function loadAuthState(restore) {
+  try {
+    const info = await authRequest("GET", "state");
+    state.setupRequired = info.setup_required === true;
+    $("setup-fields").hidden = !state.setupRequired;
+    $("confirm-fields").hidden = !state.setupRequired;
+    $("login-description").textContent = state.setupRequired
+      ? "Create your owner password. The owner token is needed only for this first setup."
+      : "Sign in with your owner password.";
+    $("password").autocomplete = state.setupRequired ? "new-password" : "current-password";
+    $("login-btn").textContent = state.setupRequired ? "Create password" : "Sign in";
+    $("login-btn").disabled = location.protocol !== "https:";
+    $("https-note").hidden = location.protocol === "https:";
+    if (restore && !state.setupRequired && location.protocol === "https:") {
+      try { await authRequest("GET", "session"); }
+      catch (error) {
+        if (error.status !== 401 || !csrfToken()) throw error;
+        await refreshSession();
+      }
+      await enterApp();
+    }
+  } catch (error) {
+    if (restore && error.status === 401) lock("");
+    else $("login-error").textContent = error.message;
+  }
+}
+
+function touch() { state.lastActive = Date.now(); }
 
 setInterval(() => {
-  if (state.token && Date.now() - state.lastActive > IDLE_MS) lock("Locked after 30 minutes without activity.");
+  if (state.authenticated && Date.now() - state.lastActive > IDLE_MS) signOut("Signed out after 30 minutes without activity.");
 }, 30 * 1000);
-
-// ---- API ----
-
-async function api(method, path, body) {
-  const headers = { Authorization: "Bearer " + state.token, Accept: "application/json" };
-  const init = {
-    method,
-    headers,
-    credentials: "omit",
-    cache: "no-store",
-    redirect: "error",
-    referrerPolicy: "no-referrer",
-    mode: "same-origin",
-  };
-  if (body !== undefined) {
-    headers["Content-Type"] = "application/json";
-    init.body = JSON.stringify(body);
-  }
-  let r;
-  try {
-    r = await fetch(API + path, init);
-  } catch (e) {
-    throw new ApiError(0, "network error");
-  }
-  const ct = r.headers.get("Content-Type") || "";
-  let data = null;
-  if (ct.startsWith("application/json")) {
-    try {
-      data = await r.json();
-    } catch {
-      data = null;
-    }
-  }
-  if (!r.ok) {
-    const err = new ApiError(r.status, (data && typeof data.error === "string" && data.error) || "HTTP " + r.status, data && Array.isArray(data.details) ? data.details : []);
-    if (r.status === 401 && state.role) lock("The server refused the token; the page is locked.");
-    throw err;
-  }
-  if (data === null) throw new ApiError(r.status, "unexpected response type");
-  return data;
-}
 
 function q(params) {
   return new URLSearchParams(params).toString();
@@ -320,13 +347,14 @@ function currentPath() {
 }
 
 async function route() {
-  if (!state.token) return;
+  if (!state.authenticated) return;
   touch();
   closeMenu();
   const seq = ++state.seq;
   const { segs, query } = parseHash();
   state.shown = null;
-  $("nav-read").classList.toggle("active", segs[0] !== "review");
+  $("nav-read").classList.toggle("active", segs[0] !== "review" && segs[0] !== "account");
+  $("nav-account").classList.toggle("active", segs[0] === "account");
   $("nav-review").classList.toggle("active", segs[0] === "review");
   markCurrent();
   try {
@@ -334,6 +362,8 @@ async function route() {
       await showFile(seq, segs.slice(1).join("/"), query.get("view") === "source");
     } else if (segs[0] === "search") {
       await showSearch(seq, query.get("q") || "");
+    } else if (segs[0] === "account") {
+      showAccount();
     } else if (segs[0] === "review" && state.role === "approver") {
       if (segs[1]) await showReview(seq, segs[1]);
       else await showPending(seq);
@@ -341,7 +371,7 @@ async function route() {
       showHome();
     }
   } catch (e) {
-    if (seq === state.seq && state.token) setView(errorBox(e));
+    if (seq === state.seq && state.authenticated) setView(errorBox(e));
   }
 }
 
@@ -359,6 +389,53 @@ function showHome() {
   }
   setView(box);
 }
+
+function showAccount() {
+  const box = el("div", "account");
+  box.appendChild(el("h1", null, "Account"));
+  box.appendChild(el("p", "muted", "Changing your password signs out every device."));
+  const fields = [];
+  for (const [label, autocomplete] of [["Current password", "current-password"], ["New password (15 to 128 characters)", "new-password"], ["New password again", "new-password"]]) {
+    const row = el("label", "account-field", label);
+    const input = el("input");
+    input.type = "password";
+    input.autocomplete = autocomplete;
+    row.appendChild(input);
+    fields.push(input);
+    box.appendChild(row);
+  }
+  const message = el("div");
+  const save = el("button", "btn primary", "Change password");
+  save.type = "button";
+  save.addEventListener("click", async () => {
+    save.disabled = true;
+    message.replaceChildren();
+    try {
+      await api("GET", "status");
+      await authRequest("POST", "password", { current_password: fields[0].value, password: fields[1].value, password_confirm: fields[2].value });
+      fields.forEach((input) => { input.value = ""; });
+      lock("Password changed. Sign in again.");
+      await loadAuthState(false);
+    } catch (error) { message.replaceChildren(errorBox(error)); }
+    finally { save.disabled = false; }
+  });
+  box.appendChild(save);
+  const all = el("button", "btn", "Sign out every device");
+  all.type = "button";
+  all.addEventListener("click", async () => {
+    if (!window.confirm("Sign out every device?")) return;
+    all.disabled = true;
+    try {
+      await authRequest("POST", "logout-all", {});
+      lock("Every device has been signed out.");
+      await loadAuthState(false);
+    } catch (error) { message.replaceChildren(errorBox(error)); all.disabled = false; }
+  });
+  box.appendChild(all);
+  box.appendChild(message);
+  setView(box);
+}
+
 
 // ---- reader view ----
 
@@ -690,31 +767,28 @@ async function refreshCount() {
 // ---- wiring ----
 
 function init() {
-  $("login-btn").addEventListener("click", () => unlock($("token").value, $("remember").checked));
-  $("token").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") unlock($("token").value, $("remember").checked);
-  });
-  $("lock").addEventListener("click", () => lock("Locked."));
+  $("login-btn").addEventListener("click", signIn);
+  for (const id of ["owner-token", "password", "password-confirm"]) {
+    $(id).addEventListener("keydown", (event) => {
+      if (event.key === "Enter") { event.preventDefault(); signIn(); }
+    });
+  }
+  $("lock").addEventListener("click", () => signOut());
   $("filter").addEventListener("input", renderTree);
   const doSearch = () => {
-    const v = $("search").value.trim();
-    if (v) location.hash = "#/search?" + q({ q: v });
+    const value = $("search").value.trim();
+    if (value) location.hash = "#/search?" + q({ q: value });
   };
   $("search-btn").addEventListener("click", doSearch);
-  $("search").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") doSearch();
-  });
+  $("search").addEventListener("keydown", (event) => { if (event.key === "Enter") doSearch(); });
   $("menu").addEventListener("click", () => {
     const open = document.body.classList.toggle("side-open");
     $("menu").setAttribute("aria-expanded", open ? "true" : "false");
   });
-  for (const ev of ["click", "keydown", "scroll", "touchstart"]) {
-    document.addEventListener(ev, touch, { passive: true });
-  }
+  for (const event of ["click", "keydown", "scroll", "touchstart"]) document.addEventListener(event, touch, { passive: true });
   window.addEventListener("hashchange", route);
-  const saved = sessionGet();
-  if (saved) unlock(saved, true);
-  else lock("");
+  lock("");
+  loadAuthState(true);
 }
 
 init();

@@ -198,14 +198,32 @@ Full threat model: [SECURITY.md](SECURITY.md).
 
 ## Web UI
 
-`trove serve` also serves a small browser UI at **`/ui/`** (for example `http://127.0.0.1:8470/ui/`). It is plain HTML, CSS and JavaScript embedded in the binary: no Node build, no CDN, no third-party script. `/`, `/healthz` and the `/v1` API are unchanged.
+`trove serve` serves the embedded browser UI at **`/ui/`**. It is plain HTML, CSS and JavaScript with no CDN or third-party script. Owner browser access requires **HTTPS**, including on a tailnet.
 
-- **Read:** folder tree, rendered markdown (or the source), file name filter, content search (the existing `/v1/search`), `[[wikilinks]]` and relative links between notes, light and dark theme, usable on a phone.
-- **Approve:** pending proposals, the full diff of one proposal (never truncated, same text as `trove review`), stale and overlap flags, warnings, the digest. **Approve** sends exactly the digest on screen (like `trove approve <id> --digest`), after fetching the review again and refusing if anything changed. **Reject** needs a reason. There is no "approve all". Stale proposals cannot be approved.
-- **Sign in:** paste a token. A reader token gets the read view; the owner (approver) token gets both views; agent tokens are refused. The token stays in page memory, or in this tab's `sessionStorage` if you tick the box; never in `localStorage` or a cookie. The page locks after 30 minutes without activity.
-- **Security model:** every action is a request to the existing API with `Authorization: Bearer`, so the server does all permission checks; the UI has no endpoint of its own. Knowledge base content is treated as hostile: it is never parsed as HTML (a small built-in markdown renderer creates DOM nodes with `textContent`), links are only notes of the knowledge base or `http(s)` URLs (`rel="noopener noreferrer"`), images and frames from content are never loaded, invisible characters are shown as `\u{....}`. A strict CSP (`default-src 'none'; script-src 'self'; ...`, no inline code) and `nosniff`, `no-referrer`, `no-store`, `frame-ancestors 'none'` headers back this up.
-- **Not protected:** anything that controls the browser (an AI agent with browser automation, a malicious extension, a compromised OS) can read the token and click Approve. Use the owner token only in a browser profile no agent or untrusted extension controls; otherwise use `trove review` in a terminal. Details: [SECURITY.md](SECURITY.md).
-- Turn it off with `"disable_ui": true` in `trove.json`.
+- **First setup:** enter an existing owner (approver) token once, then enter a new password twice. The password must contain 15 to 128 characters. Setup is available only until the owner account is created; the token cannot reset an existing account.
+- **Sign in:** use the owner password on a laptop, phone or other browser. The server uses Argon2id (19 MiB, 2 iterations, parallelism 1, random salt). Passwords and raw session credentials are never logged.
+- **Session:** opaque access and refresh tokens are held in `Secure; HttpOnly; SameSite=Strict; Path=/`, host-only cookies. JavaScript never receives them and uses no localStorage or sessionStorage. Access lasts 10 minutes; refresh has a fixed 7-day limit and rotates on every refresh. Reuse of a consumed refresh token revokes its session family. A bounded 5-second exact-pair retry window handles concurrent browser requests without extending the session.
+- **Account:** change the password or sign out all devices from the Account page. Password changes revoke all sessions. The UI signs out the current session after 30 minutes without activity. At most 16 device sessions are retained.
+- **Read and approve:** folder tree, rendered markdown/source, file name and content search, wikilinks, full proposal diffs, warnings, digest, Approve and Reject. Approval still sends the exact reviewed digest and refuses changed or stale proposals.
+- **API compatibility:** agent and reader bearer tokens continue to work. After owner password setup, raw approver bearer tokens can no longer approve or reject: use the owner browser session. They remain available for the other existing owner CLI operations. Keep those administrative tokens away from agents.
+- **Browser trust:** a password session does not prove that a human clicked Approve. An agent or malicious extension controlling an authenticated browser can act through it even though HttpOnly prevents token extraction. Use an owner browser/profile that agents cannot control. See [SECURITY.md](SECURITY.md).
+- Turn the static UI off with `"disable_ui": true`. This does not remove stored browser credentials or sessions.
+
+Use direct Trove TLS (`tls_cert` and `tls_key`), or terminate TLS at a reverse proxy. For a proxy, set `web_trusted_proxies` to its exact source IP CIDR (for example `192.0.2.10/32`, replace it), and have the proxy overwrite `X-Forwarded-Proto` with `https`. Preserve the external Host, or set `web_origin` to the exact external origin such as `https://trove.example.com` (no trailing slash). The server never trusts arbitrary forwarded headers. Do not trust all clients or an entire tailnet as a proxy.
+
+`GET /auth/state` reports whether setup is needed. `POST /auth/setup`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/logout-all`, `/auth/password` and `GET /auth/session` implement the browser session. Cookie-authenticated mutations require a matching HTTPS Origin and a session-bound CSRF cookie/header; no CORS is enabled. Login/setup/password attempts are bounded per peer and globally.
+
+Browser credential state is `<data_dir>/browser-auth.json`, atomically written with owner-only file permissions. It contains a password hash and hashed session credentials and survives rebuilds/restarts. Back it up with the protected data directory. A corrupt state file stops server startup rather than reopening setup.
+
+**Lost password:** there is no public reset endpoint or Docker-log password. From a trusted local administrator console, stop Trove, move the auth state out of the data directory, then start it and repeat setup with the offline owner token. For the generated Compose layout:
+
+```sh
+docker compose stop trove
+mv -i trove/data/browser-auth.json trove/browser-auth.recovery-backup.json
+docker compose up -d
+```
+
+Keep the backup protected and do not restore it to recover a session: it contains the old password hash and session state. The knowledge base and API token configuration are not changed by this reset. Never give agents write access to the data directory.
 
 ## MCP
 
@@ -233,6 +251,8 @@ Server: generated by `trove init`, or copy [`trove.example.json`](trove.example.
 | `validation.frontmatter_fields` | `title`, `updated`, `status` | required frontmatter (`INDEX.md`, `README.md` exempt) |
 | `validation.extra_secret_patterns` | `[]` | your own secret regexes |
 | `disable_ui` | `false` | `true` turns off the web UI under `/ui/` |
+| `web_origin` | `https://trove.example.com` | exact external HTTPS origin (no trailing slash), needed if a proxy changes Host |
+| `web_trusted_proxies` | `["192.0.2.10/32"]` | exact trusted TLS proxy peer CIDRs; empty by default |
 
 Client: environment variables (see [`.env.example`](.env.example)): `TROVE_URL`, `TROVE_DIR`, the token variables above, and `TROVE_INSECURE_HTTP=1` for a deliberate plain-http setup inside a VPN.
 

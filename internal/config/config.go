@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"time"
@@ -63,6 +65,10 @@ type Config struct {
 	// DisableUI turns off the built-in web UI under /ui/ (static files;
 	// the API stays the same either way).
 	DisableUI bool `json:"disable_ui,omitempty"`
+	// WebOrigin is the external HTTPS origin when a reverse proxy changes Host.
+	WebOrigin string `json:"web_origin,omitempty"`
+	// WebTrustedProxies may assert X-Forwarded-Proto=https for browser auth.
+	WebTrustedProxies []string `json:"web_trusted_proxies,omitempty"`
 }
 
 // Default returns a configuration with the defaults of the first release.
@@ -149,6 +155,17 @@ func (c Config) Validate() error {
 	}
 	if (c.TLSCert == "") != (c.TLSKey == "") {
 		return fmt.Errorf("tls_cert and tls_key must be set together")
+	}
+	if c.WebOrigin != "" {
+		u, err := url.Parse(c.WebOrigin)
+		if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
+			return fmt.Errorf("web_origin must be an HTTPS origin without path, query or fragment")
+		}
+	}
+	for _, cidr := range c.WebTrustedProxies {
+		if _, _, err := net.ParseCIDR(cidr); err != nil {
+			return fmt.Errorf("web_trusted_proxies must contain IP CIDRs")
+		}
 	}
 	if !auth.ValidName(c.BotName) {
 		return fmt.Errorf("bot_name must match [A-Za-z0-9._-]{1,64}")

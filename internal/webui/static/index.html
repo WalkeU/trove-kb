@@ -17,26 +17,31 @@
   <nav id="nav" hidden>
     <a id="nav-read" href="#/">Read</a>
     <a id="nav-review" href="#/review" hidden>Approvals <span id="pending-count" class="count"></span></a>
+    <a id="nav-account" href="#/account">Account</a>
   </nav>
   <span class="spacer"></span>
   <span id="who" class="who" hidden></span>
-  <button id="lock" class="btn small" type="button" hidden>Lock</button>
+  <button id="lock" class="btn small" type="button" hidden>Sign out</button>
 </header>
 
-<main id="login" class="login" hidden>
+<main id="login" class="login">
   <h1>Trove</h1>
-  <p>Paste a reader token to browse, or the owner (approver) token to browse and decide on proposals.</p>
-  <label for="token">Token</label>
-  <input id="token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false">
-  <label class="check"><input id="remember" type="checkbox"> Keep it for this browser tab (sessionStorage, cleared when the tab closes)</label>
-  <button id="login-btn" class="btn primary" type="button">Unlock</button>
+  <p id="login-description">Loading sign-in...</p>
+  <p id="https-note" class="banner error" hidden>Open Trove through its HTTPS address to set up your password or sign in.</p>
+  <div id="setup-fields" class="login-fields" hidden>
+    <label for="owner-token">Owner token (first setup only)</label>
+    <input id="owner-token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false">
+  </div>
+  <label for="password">Password</label>
+  <input id="password" type="password" autocomplete="current-password">
+  <div id="confirm-fields" class="login-fields" hidden>
+    <label for="password-confirm">Password again (15 to 128 characters)</label>
+    <input id="password-confirm" type="password" autocomplete="new-password">
+  </div>
+  <button id="login-btn" class="btn primary" type="button" disabled>Sign in</button>
   <p id="login-error" class="error" role="alert"></p>
-  <ul class="fineprint">
-    <li>The token is kept in this page's memory only (or in this tab's sessionStorage if you tick the box). Never in localStorage or a cookie.</li>
-    <li>The page locks itself after 30 minutes without activity.</li>
-    <li>Agent tokens are not accepted here.</li>
-    <li>Do not use the owner token in a browser that an AI agent or a browser extension you do not trust can control.</li>
-  </ul>
+  <p class="fineprint">Use your own trusted browser for owner access. Sign out when you finish on a shared device.</p>
+  <noscript>JavaScript is required to use the Trove interface.</noscript>
 </main>
 
 <div id="app" class="app" hidden>

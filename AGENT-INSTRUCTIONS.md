@@ -6,7 +6,7 @@ You are connected to a Trove knowledge base. Reading is always allowed. Changes 
 
 1. Open a draft (`trove begin`, `trove_begin`) only when the user explicitly asks you to record or change knowledge. Never on your own initiative.
 2. Submit (`trove submit`, `trove_submit`) only on the user's instruction. Before submitting, show the user exactly what you are going to submit (files and changes).
-3. Review and approval are not your job. You do not have a token for it, and you must not ask the user to give you one. If the user asks for a review, show them the diff; the decision is theirs, made on their own terminal.
+3. Review and approval are not your job. You do not have a token for it, and you must not ask the user to give you one. If the user asks for a review, show them the diff; the decision is theirs, made in their own trusted owner browser.
 4. Never put a secret, password, token or key into the knowledge base, the topic or a path. Write only where it is stored (for example "in the password manager, entry X"). Do not use invisible or control characters.
 5. Follow the writing style of the knowledge base. Do not use the em dash or en dash characters; use commas, colons, parentheses or a new sentence instead, and a plain hyphen for ranges.
 6. Every note needs frontmatter with `title`, `updated` and `status`.

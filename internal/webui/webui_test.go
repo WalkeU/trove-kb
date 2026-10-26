@@ -163,7 +163,7 @@ func TestIndexHasNoInlineCode(t *testing.T) {
 		}
 	}
 	if strings.Contains(lower, "<form") {
-		t.Error("no forms: form-action is 'none' and the token must never be submitted")
+		t.Error("no forms: form-action is 'none' and requests are sent through fetch")
 	}
 	if strings.Contains(lower, "<img") || strings.Contains(lower, "<iframe") {
 		t.Error("no images or frames in the page")
@@ -174,7 +174,7 @@ func TestIndexHasNoInlineCode(t *testing.T) {
 func TestScriptsAvoidDangerousSinks(t *testing.T) {
 	banned := []string{
 		"innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval(", "new Function",
-		"localStorage", "document.cookie", "setAttribute(\"on", "setAttribute('on", "srcdoc",
+		"localStorage", "document.cookie =", "document.cookie=", "setAttribute(\"on", "setAttribute('on", "srcdoc",
 		"createContextualFragment", "DOMParser", "javascript:", "window.open", ".src =", "setTimeout(\"", "setInterval(\"",
 		"http://", "https://", "import(",
 	}
@@ -218,26 +218,31 @@ func TestHrefAssignmentsAreSanitized(t *testing.T) {
 	}
 }
 
-// The token may only be stored in sessionStorage, under one key, and is
-// only ever sent in the Authorization header.
+// Browser authentication stays in HttpOnly cookies. The one-time owner
+// token is submitted only to setup, and no credential enters Web Storage.
 func TestTokenHandling(t *testing.T) {
 	app := stripComments(read(t, "app.js"))
-	if strings.Count(app, "sessionStorage.setItem(") != 1 {
-		t.Error("exactly one sessionStorage write expected")
+	for _, forbidden := range []string{"localStorage", "sessionStorage", "state.token"} {
+		if strings.Contains(app, forbidden) {
+			t.Errorf("browser session code contains %q", forbidden)
+		}
 	}
-	if !strings.Contains(app, `Authorization: "Bearer " + state.token`) {
-		t.Error("the token must travel in the Authorization header")
+	if strings.Count(app, `Authorization: "Bearer " + ownerToken`) != 1 || !strings.Contains(app, `authRequest("POST", "setup"`) {
+		t.Error("the owner token must only authorize first setup")
 	}
-	if strings.Count(app, "fetch(") != 1 || !strings.Contains(app, "fetch(API + path, init)") {
-		t.Error("all requests must go through api() to the relative API base")
+	if strings.Count(app, "fetch(") != 1 || !strings.Contains(app, "fetch(base + path, init)") {
+		t.Error("all requests must go through the shared same-origin request function")
 	}
-	for _, want := range []string{`credentials: "omit"`, `redirect: "error"`, `referrerPolicy: "no-referrer"`, `mode: "same-origin"`} {
+	for _, want := range []string{`credentials: "same-origin"`, `redirect: "error"`, `referrerPolicy: "no-referrer"`, `mode: "same-origin"`} {
 		if !strings.Contains(app, want) {
 			t.Errorf("fetch options lack %s", want)
 		}
 	}
-	if !strings.Contains(app, `const API = "../v1/";`) {
-		t.Error("API base must be the relative ../v1/")
+	if !strings.Contains(app, `const API = "../v1/";`) || !strings.Contains(app, `const AUTH = "../auth/";`) {
+		t.Error("API and auth bases must be relative")
+	}
+	if !strings.Contains(app, `__Host-trove-csrf=`) || regexp.MustCompile(`document\.cookie\s*=`).MatchString(app) {
+		t.Error("JavaScript may read only the CSRF cookie; it must not write cookies")
 	}
 	if strings.Contains(app, "approve all") || strings.Contains(strings.ToLower(app), "approveall") {
 		t.Error("there must be no approve-all action")

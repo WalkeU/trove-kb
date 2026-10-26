@@ -222,14 +222,32 @@ Az utolsó hash-t rendszeresen mentsd máshová: csak így derül ki, ha a napl�
 
 ## Webes felület
 
-A `trove serve` egy kis böngészős felületet is kiszolgál a **`/ui/`** útvonalon (pl. `http://127.0.0.1:8470/ui/`). Sima HTML, CSS és JavaScript, a binárisba ágyazva: nincs Node build, nincs CDN, nincs külső script. A `/`, a `/healthz` és a `/v1` API nem változott.
+A `trove serve` a **`/ui/`** útvonalon szolgálja ki a beágyazott böngészős felületet. Sima HTML, CSS és JavaScript, CDN és külső script nélkül. Az owner böngészős belépéshez **HTTPS kell**, tailneten is.
 
-- **Olvasás:** mappafa, megjelenített markdown (vagy a forrás), fájlnév-szűrő, tartalomkeresés (a meglévő `/v1/search`), `[[wikilinkek]]` és relatív linkek a jegyzetek között, világos és sötét téma, telefonon is használható.
-- **Jóváhagyás:** függő javaslatok, egy javaslat teljes diffje (soha nem csonkolt, ugyanaz a szöveg, mint a `trove review`-ban), elavult- és átfedés-jelzés, figyelmeztetések, digest. Az **Approve** pontosan a képernyőn látható digestet küldi (mint a `trove approve <id> --digest`), előtte újra lekéri a review-t, és megtagadja, ha bármi változott. A **Reject**-hez indoklás kell. Nincs "approve all". Elavult javaslat nem hagyható jóvá.
-- **Belépés:** token beillesztése. Reader tokennel az olvasó nézet, az owner (approver) tokennel mindkét nézet érhető el; agent tokent a felület nem fogad el. A token a lap memóriájában marad, vagy a jelölőnégyzettel ennek a fülnek a `sessionStorage`-ában; soha nem `localStorage`-ban vagy cookie-ban. 30 perc tétlenség után a lap lezár.
-- **Biztonsági modell:** minden művelet a meglévő API-ra megy `Authorization: Bearer` fejléccel, így minden jogosultságot a szerver ellenőriz; a felületnek nincs saját végpontja. A KB tartalmát ellenségesnek tekinti: soha nem értelmezi HTML-ként (beépített, kicsi markdown-megjelenítő, `textContent`-tel épít DOM-ot), link csak KB-jegyzetre vagy `http(s)` címre mutathat (`rel="noopener noreferrer"`), a tartalomból kép és keret nem töltődik be, a láthatatlan karakterek `\u{....}` alakban látszanak. Szigorú CSP (`default-src 'none'; script-src 'self'; ...`, inline kód nélkül), valamint `nosniff`, `no-referrer`, `no-store`, `frame-ancestors 'none'` fejlécek.
-- **Amit nem véd:** ami a böngészőt irányítja (böngészőt vezérlő AI agent, rosszindulatú bővítmény, kompromittált OS), az kiolvashatja a tokent és rákattinthat az Approve-ra. Az owner tokent csak olyan böngészőprofilban használd, amit agent vagy nem megbízható bővítmény nem irányít; különben maradj a terminálos `trove review`-nál. Részletek: [SECURITY.md](SECURITY.md).
-- Kikapcsolás: `"disable_ui": true` a `trove.json`-ban.
+- **Első beállítás:** egyszer add meg a meglévő owner (approver) tokent, majd kétszer az új jelszót. A jelszó 15-128 karakteres lehet. A beállítás csak az owner fiók létrehozásáig érhető el; a token utána nem reseteli a fiókot.
+- **Belépés:** a saját jelszóval, laptopról, telefonról vagy más böngészőből. A szerver Argon2id hasht tárol (19 MiB, 2 iteráció, párhuzamosság 1, véletlen salt). Jelszó és nyers sessiontitok nem kerül naplóba.
+- **Session:** véletlen, opaque access és refresh tokenek `Secure; HttpOnly; SameSite=Strict; Path=/`, hosthoz kötött cookie-kban. A JavaScript nem kapja meg őket, nincs localStorage vagy sessionStorage. Az access 10 percig él; a refresh fix 7 napig, és minden frissítéskor cserélődik. Felhasznált refresh token visszajátszása visszavonja a sessioncsaládot. Egy legfeljebb 5 másodperces, azonos régi tokenpárhoz kötött retry-ablak kezeli a párhuzamos böngészőkéréseket.
+- **Account:** jelszócsere és minden eszköz kijelentkeztetése. A jelszócsere minden sessiont visszavon. A felület 30 perc tétlenség után kijelentkezteti az aktuális sessiont. Legfeljebb 16 eszközsession marad meg.
+- **Olvasás és jóváhagyás:** mappafa, markdown/forrás, fájlnév- és tartalomkeresés, wikilinkek, teljes diff, figyelmeztetések, digest, Approve és Reject. A jóváhagyás továbbra is a megtekintett digestet küldi, megváltozott vagy elavult javaslatot nem fogad el.
+- **API-kompatibilitás:** az agent és reader bearer tokenek működnek tovább. Az owner jelszó beállítása után a nyers approver bearer token már nem hagyhat jóvá és nem utasíthat el: ehhez az owner böngészős session kell. A többi meglévő owner CLI-művelet megmarad. Az adminisztratív tokenek ne kerüljenek agenthez.
+- **Böngésző bizalma:** a jelszavas session nem bizonyítja, hogy ember kattintott az Approve-ra. A belépett böngészőt vezérlő agent vagy rosszindulatú bővítmény a session nevében cselekedhet, bár a HttpOnly cookie-t nem olvashatja ki. Az owner böngészőjét/profilját agent ne vezérelje. Részletek: [SECURITY.md](SECURITY.md).
+- Kikapcsolás: `"disable_ui": true`. Ez a statikus UI-t kapcsolja ki, a tárolt hitelesítést és sessionöket nem törli.
+
+Használj közvetlen Trove TLS-t (`tls_cert`, `tls_key`), vagy HTTPS reverse proxyt. Proxy esetén a `web_trusted_proxies` listába csak a proxy pontos forrás IP-CIDR-je kerüljön (például `192.0.2.10/32`, cseréld a valós címre), a proxy pedig írja felül az `X-Forwarded-Proto` fejlécet `https` értékkel. Őrizze meg a külső Host fejlécet, vagy állítsd be a `web_origin` mezőt a pontos külső originre, például `https://trove.example.com` (záró perjel nélkül). Tetszőleges forwarded fejlécet a szerver nem fogad el. Ne állítsd az összes klienst vagy a teljes tailnetet megbízható proxynak.
+
+A `GET /auth/state` mutatja, kell-e első beállítás. A `POST /auth/setup`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/logout-all`, `/auth/password` és a `GET /auth/session` kezeli a böngészős sessiont. A cookie-val hitelesített írásokhoz egyező HTTPS Origin és sessionhöz kötött CSRF cookie/fejléc kell; CORS nincs. A belépési/beállítási/jelszócsere-próbálkozások peer szerint és összesítve is korlátozottak.
+
+A hitelesítés állapota: `<data_dir>/browser-auth.json`, atomikus írással, csak owner által olvasható fájljoggal. Jelszóhasht és sessiontitkok hashét tartalmazza, újraépítés és restart után is megmarad. A védett adatmappával együtt mentsd. Hibás állapotfájlnál a szerver leáll, nem nyitja meg újra a beállítást.
+
+**Elfelejtett jelszó:** nincs publikus reset végpont vagy Docker-logban jelszó. Megbízható helyi adminisztrátori konzolon állítsd le a Trove-t, mozgasd ki a hitelesítési állapotot az adatmappából, majd indítsd el és végezd el az első beállítást az offline owner tokennel. A generált Compose-elrendezésnél:
+
+```sh
+docker compose stop trove
+mv -i trove/data/browser-auth.json trove/browser-auth.recovery-backup.json
+docker compose up -d
+```
+
+A mentést védd; session helyreállításához ne másold vissza, mert a régi jelszóhasht és sessionállapotot tartalmazza. A KB-t és az API-tokenek konfigurációját ez a reset nem módosítja. Agent ne kapjon írási jogot az adatmappához.
 
 ## MCP
 
@@ -257,6 +275,8 @@ Szerver: a `trove init` generálja, vagy a [`trove.example.json`](trove.example.
 | `validation.frontmatter_fields` | `title`, `updated`, `status` | kötelező frontmatter (`INDEX.md`, `README.md` kivétel) |
 | `validation.extra_secret_patterns` | `[]` | saját titok-minták |
 | `disable_ui` | `false` | `true` kikapcsolja a `/ui/` alatti webes felületet |
+| `web_origin` | `https://trove.example.com` | pontos külső HTTPS origin, záró perjel nélkül, ha a proxy átírja a Host fejlécet |
+| `web_trusted_proxies` | `["192.0.2.10/32"]` | csak a megbízható TLS proxy peer CIDR-jei, alapból üres |
 
 Kliens: környezeti változók (lásd [`.env.example`](.env.example)): `TROVE_URL`, `TROVE_DIR`, a fenti token-változók, és `TROVE_INSECURE_HTTP=1` tudatos, VPN-en belüli sima http-hez.
 

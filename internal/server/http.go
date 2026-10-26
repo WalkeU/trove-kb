@@ -53,12 +53,14 @@ func (l *rateLimiter) allow(now time.Time) (int, bool) {
 }
 
 type Handler struct {
-	unknown rateLimiter
-	e       *Engine
-	keys    *auth.Keyring
-	cfg     config.Config
-	log     *log.Logger
-	mux     *http.ServeMux
+	unknown    rateLimiter
+	e          *Engine
+	keys       *auth.Keyring
+	cfg        config.Config
+	log        *log.Logger
+	mux        *http.ServeMux
+	browser    *browserAuth
+	browserErr error
 }
 
 // NewHandler builds the HTTP handler.
@@ -67,6 +69,7 @@ func NewHandler(e *Engine, keys *auth.Keyring, logger *log.Logger) *Handler {
 		logger = log.New(os.Stderr, "trove: ", log.LstdFlags)
 	}
 	h := &Handler{e: e, keys: keys, cfg: e.cfg, log: logger, mux: http.NewServeMux()}
+	h.browser, h.browserErr = openBrowserAuth(e.cfg.DataDir)
 	m := h.mux
 	m.HandleFunc("GET /v1/head", h.head)
 	m.HandleFunc("GET /v1/snapshot", h.snapshot)
@@ -101,7 +104,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	webui.SetSecurityHeaders(w.Header())
 	if !h.cfg.DisableUI && webui.Match(r.URL.Path) {
 		// Static files only, no token needed: every action the UI takes
-		// is a request to /v1 below, with the token the user pasted.
+		// is a request to /v1 below, authenticated by the browser session.
 		webui.Handler().ServeHTTP(w, r)
 		return
 	}
@@ -110,20 +113,40 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("ok\n"))
 		return
 	}
-	token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-	if !ok {
-		writeErr(w, http.StatusUnauthorized, "missing bearer token", nil)
+	if strings.HasPrefix(r.URL.Path, "/auth/") {
+		h.handleBrowserAuth(w, r)
 		return
 	}
-	actor, err := h.keys.Lookup(strings.TrimSpace(token))
-	if err != nil {
-		// Values are quoted (%q) so a request cannot inject escape sequences
-		// or fake lines into the log (D-6); the log is rate limited.
-		if n, ok := h.unknown.allow(time.Now()); ok {
-			h.log.Printf("rejected request with unknown token from %q %q %q (%d similar suppressed)", r.RemoteAddr, r.Method, r.URL.Path, n)
+	var actor auth.Actor
+	if authorization := r.Header.Get("Authorization"); authorization != "" {
+		token, ok := strings.CutPrefix(authorization, "Bearer ")
+		if !ok {
+			writeErr(w, http.StatusUnauthorized, "invalid authorization header", nil)
+			return
 		}
-		writeErr(w, http.StatusUnauthorized, "invalid token", nil)
-		return
+		var err error
+		actor, err = h.keys.Lookup(strings.TrimSpace(token))
+		if err != nil {
+			if n, ok := h.unknown.allow(time.Now()); ok {
+				h.log.Printf("rejected request with unknown token from %q %q %q (%d similar suppressed)", r.RemoteAddr, r.Method, r.URL.Path, n)
+			}
+			writeErr(w, http.StatusUnauthorized, "invalid token", nil)
+			return
+		}
+		// Once the owner has migrated to browser password authentication,
+		// a raw approver token cannot bypass the UI decision path.
+		if actor.Role == auth.RoleApprover && (h.browserErr != nil || h.browserConfigured()) &&
+			strings.HasPrefix(r.URL.Path, "/v1/proposals/") &&
+			(strings.HasSuffix(r.URL.Path, "/approve") || strings.HasSuffix(r.URL.Path, "/reject")) {
+			writeErr(w, http.StatusForbidden, "use the owner browser session to approve or reject", nil)
+			return
+		}
+	} else {
+		var ok bool
+		actor, ok = h.browserActor(w, r)
+		if !ok {
+			return
+		}
 	}
 	h.mux.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, actor)))
 }
@@ -446,9 +469,13 @@ func Serve(ctx context.Context, cfg config.Config, logger *log.Logger) error {
 	if cfg.TLSCert == "" && !isLoopback(cfg.Listen) {
 		logger.Printf("WARNING: listening on %s without TLS; tokens travel in clear text unless the network (VPN, reverse proxy) protects them", cfg.Listen)
 	}
+	handler := NewHandler(e, keys, logger)
+	if err := handler.browserStartupError(); err != nil {
+		return err
+	}
 	srv := &http.Server{
 		Addr:              cfg.Listen,
-		Handler:           NewHandler(e, keys, logger),
+		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       5 * time.Minute,
 		WriteTimeout:      5 * time.Minute,
