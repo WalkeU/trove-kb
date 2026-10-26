@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"trove/internal/auth"
@@ -65,7 +66,11 @@ type Config struct {
 	// DisableUI turns off the built-in web UI under /ui/ (static files;
 	// the API stays the same either way).
 	DisableUI bool `json:"disable_ui,omitempty"`
-	// WebOrigin is the external HTTPS origin when a reverse proxy changes Host.
+	// WebAllowTailnetHTTP permits browser authentication over the private
+	// 100.64.0.0/10 tailnet only. WebOrigin must be set to the exact HTTP origin.
+	WebAllowTailnetHTTP bool `json:"web_allow_tailnet_http,omitempty"`
+	// WebOrigin is the exact browser origin when the external Host differs or
+	// when tailnet-only HTTP is explicitly enabled.
 	WebOrigin string `json:"web_origin,omitempty"`
 	// WebTrustedProxies may assert X-Forwarded-Proto=https for browser auth.
 	WebTrustedProxies []string `json:"web_trusted_proxies,omitempty"`
@@ -158,8 +163,21 @@ func (c Config) Validate() error {
 	}
 	if c.WebOrigin != "" {
 		u, err := url.Parse(c.WebOrigin)
-		if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
-			return fmt.Errorf("web_origin must be an HTTPS origin without path, query or fragment")
+		validScheme := u != nil && (u.Scheme == "https" || (c.WebAllowTailnetHTTP && u.Scheme == "http"))
+		if err != nil || !validScheme || u.Host == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
+			return fmt.Errorf("web_origin must be an HTTPS origin, or HTTP when web_allow_tailnet_http is enabled, without path, query or fragment")
+		}
+	}
+	if c.WebAllowTailnetHTTP && (c.WebOrigin == "" || !strings.HasPrefix(c.WebOrigin, "http://")) {
+		return fmt.Errorf("web_allow_tailnet_http requires an exact http:// web_origin")
+	}
+	if c.WebAllowTailnetHTTP {
+		u, _ := url.Parse(c.WebOrigin)
+		host, _, err := net.SplitHostPort(u.Host)
+		ip := net.ParseIP(host)
+		_, tailnet, _ := net.ParseCIDR("100.64.0.0/10")
+		if err != nil || ip == nil || !tailnet.Contains(ip) {
+			return fmt.Errorf("web_origin must use the Trove tailnet IP when web_allow_tailnet_http is enabled")
 		}
 	}
 	for _, cidr := range c.WebTrustedProxies {

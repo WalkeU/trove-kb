@@ -222,20 +222,22 @@ Az utolsó hash-t rendszeresen mentsd máshová: csak így derül ki, ha a napl�
 
 ## Webes felület
 
-A `trove serve` a **`/ui/`** útvonalon szolgálja ki a beágyazott böngészős felületet. Sima HTML, CSS és JavaScript, CDN és külső script nélkül. Az owner böngészős belépéshez **HTTPS kell**, tailneten is.
+A `trove serve` a **`/ui/`** útvonalon szolgálja ki a beágyazott böngészős felületet. Sima HTML, CSS és JavaScript, CDN és külső script nélkül. A böngészős belépés alapértelmezetten HTTPS-t használ. Beállítható egy külön, kizárólag a titkosított WireGuard tailnetről használható HTTP mód is.
 
 - **Első beállítás:** egyszer add meg a meglévő owner (approver) tokent, majd kétszer az új jelszót. A jelszó 15-128 karakteres lehet. A beállítás csak az owner fiók létrehozásáig érhető el; a token utána nem reseteli a fiókot.
 - **Belépés:** a saját jelszóval, laptopról, telefonról vagy más böngészőből. A szerver Argon2id hasht tárol (19 MiB, 2 iteráció, párhuzamosság 1, véletlen salt). Jelszó és nyers sessiontitok nem kerül naplóba.
-- **Session:** véletlen, opaque access és refresh tokenek `Secure; HttpOnly; SameSite=Strict; Path=/`, hosthoz kötött cookie-kban. A JavaScript nem kapja meg őket, nincs localStorage vagy sessionStorage. Az access 10 percig él; a refresh fix 7 napig, és minden frissítéskor cserélődik. Felhasznált refresh token visszajátszása visszavonja a sessioncsaládot. Egy legfeljebb 5 másodperces, azonos régi tokenpárhoz kötött retry-ablak kezeli a párhuzamos böngészőkéréseket.
+- **Session:** véletlen, opaque access és refresh tokenek `HttpOnly; SameSite=Strict; Path=/` cookie-kban. HTTPS-en `Secure` és `__Host-` nevű cookie-kat használ. A tailnet HTTP mód külön, Secure nélküli cookie-neveket használ, mert a böngészők HTTP-n elutasítják a Secure cookie-t; a szerver csak a `100.64.0.0/10` tartományból érkező közvetlen kapcsolatot fogadja el. A JavaScript nem kapja meg a session tokeneket, nincs localStorage vagy sessionStorage. Az access 10 percig él; a refresh fix 7 napig, és minden frissítéskor cserélődik. Felhasznált refresh token visszajátszása visszavonja a sessioncsaládot. Egy legfeljebb 5 másodperces, azonos régi tokenpárhoz kötött retry-ablak kezeli a párhuzamos böngészőkéréseket.
 - **Account:** jelszócsere és minden eszköz kijelentkeztetése. A jelszócsere minden sessiont visszavon. A felület 30 perc tétlenség után kijelentkezteti az aktuális sessiont. Legfeljebb 16 eszközsession marad meg.
 - **Olvasás és jóváhagyás:** mappafa, markdown/forrás, fájlnév- és tartalomkeresés, wikilinkek, teljes diff, figyelmeztetések, digest, Approve és Reject. A jóváhagyás továbbra is a megtekintett digestet küldi, megváltozott vagy elavult javaslatot nem fogad el.
 - **API-kompatibilitás:** az agent és reader bearer tokenek működnek tovább. Az owner jelszó beállítása után a nyers approver bearer token már nem hagyhat jóvá és nem utasíthat el: ehhez az owner böngészős session kell. A többi meglévő owner CLI-művelet megmarad. Az adminisztratív tokenek ne kerüljenek agenthez.
 - **Böngésző bizalma:** a jelszavas session nem bizonyítja, hogy ember kattintott az Approve-ra. A belépett böngészőt vezérlő agent vagy rosszindulatú bővítmény a session nevében cselekedhet, bár a HttpOnly cookie-t nem olvashatja ki. Az owner böngészőjét/profilját agent ne vezérelje. Részletek: [SECURITY.md](SECURITY.md).
 - Kikapcsolás: `"disable_ui": true`. Ez a statikus UI-t kapcsolja ki, a tárolt hitelesítést és sessionöket nem törli.
 
-Használj közvetlen Trove TLS-t (`tls_cert`, `tls_key`), vagy HTTPS reverse proxyt. Proxy esetén a `web_trusted_proxies` listába csak a proxy pontos forrás IP-CIDR-je kerüljön (például `192.0.2.10/32`, cseréld a valós címre), a proxy pedig írja felül az `X-Forwarded-Proto` fejlécet `https` értékkel. Őrizze meg a külső Host fejlécet, vagy állítsd be a `web_origin` mezőt a pontos külső originre, például `https://trove.example.com` (záró perjel nélkül). Tetszőleges forwarded fejlécet a szerver nem fogad el. Ne állítsd az összes klienst vagy a teljes tailnetet megbízható proxynak.
+HTTPS-hez használhatsz közvetlen Trove TLS-t (`tls_cert`, `tls_key`) vagy HTTPS reverse proxyt. Proxy esetén a `web_trusted_proxies` listába csak a proxy pontos forrás IP-CIDR-je kerüljön, a proxy pedig írja felül az `X-Forwarded-Proto` fejlécet `https` értékkel. A `web_origin` a pontos HTTPS origin legyen.
 
-A `GET /auth/state` mutatja, kell-e első beállítás. A `POST /auth/setup`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/logout-all`, `/auth/password` és a `GET /auth/session` kezeli a böngészős sessiont. A cookie-val hitelesített írásokhoz egyező HTTPS Origin és sessionhöz kötött CSRF cookie/fejléc kell; CORS nincs. A belépési/beállítási/jelszócsere-próbálkozások peer szerint és összesítve is korlátozottak.
+Ha nem akarsz domaint vagy proxyt, engedélyezheted a közvetlen HTTP-t a tailneten: állítsd a `web_allow_tailnet_http` értékét `true`-ra, a `web_origin` pedig legyen a pontos tailnet URL, például `http://100.64.0.5:8470`. A böngészős hitelesítést a szerver csak a `100.64.0.0/10` tartományba eső közvetlen tailnet peer IP-ről fogadja el. A laptopon/telefonon a tailnet IP-t használd, ne a LAN címet. A WireGuard titkosítja a tailnetes forgalmat, de a HTTP-nak nincs TLS-védelme, ha kikerül a tailnetből; ezért ne tedd publikussá a 8470-es portot, és ne engedélyezd ezen az üzemmódon a LAN-hozzáférést. A session cookie-k ebben a módban nem lehetnek Secure jelölésűek.
+
+A `GET /auth/state` mutatja, kell-e első beállítás, és az aktuális peer használhat-e HTTP-t. A `POST /auth/setup`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/logout-all`, `/auth/password` és a `GET /auth/session` kezeli a böngészős sessiont. A cookie-val hitelesített írásokhoz pontosan egyező Origin és sessionhöz kötött CSRF cookie/fejléc kell; CORS nincs. A belépési/beállítási/jelszócsere-próbálkozások peer szerint és összesítve is korlátozottak.
 
 A hitelesítés állapota: `<data_dir>/browser-auth.json`, atomikus írással, csak owner által olvasható fájljoggal. Jelszóhasht és sessiontitkok hashét tartalmazza, újraépítés és restart után is megmarad. A védett adatmappával együtt mentsd. Hibás állapotfájlnál a szerver leáll, nem nyitja meg újra a beállítást.
 
@@ -275,8 +277,9 @@ Szerver: a `trove init` generálja, vagy a [`trove.example.json`](trove.example.
 | `validation.frontmatter_fields` | `title`, `updated`, `status` | kötelező frontmatter (`INDEX.md`, `README.md` kivétel) |
 | `validation.extra_secret_patterns` | `[]` | saját titok-minták |
 | `disable_ui` | `false` | `true` kikapcsolja a `/ui/` alatti webes felületet |
-| `web_origin` | `https://trove.example.com` | pontos külső HTTPS origin, záró perjel nélkül, ha a proxy átírja a Host fejlécet |
+| `web_origin` | `https://trove.example.com` | pontos HTTPS origin; tailnet HTTP-nél a teljes URL, pl. `http://100.64.0.5:8470` |
 | `web_trusted_proxies` | `["192.0.2.10/32"]` | csak a megbízható TLS proxy peer CIDR-jei, alapból üres |
+| `web_allow_tailnet_http` | `false` | böngészős HTTP engedélyezése kizárólag közvetlen `100.64.0.0/10` peer címekről |
 
 Kliens: környezeti változók (lásd [`.env.example`](.env.example)): `TROVE_URL`, `TROVE_DIR`, a fenti token-változók, és `TROVE_INSECURE_HTTP=1` tudatos, VPN-en belüli sima http-hez.
 

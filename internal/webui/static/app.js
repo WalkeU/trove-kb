@@ -11,6 +11,7 @@ const IDLE_MS = 30 * 60 * 1000;
 const state = {
   authenticated: false,
   setupRequired: false,
+  httpAllowed: false,
   role: "",
   actor: "",
   files: [],
@@ -32,9 +33,12 @@ class ApiError extends Error {
 }
 
 function csrfToken() {
-  const cookie = document.cookie.split(";").map((s) => s.trim()).find((s) => s.startsWith("__Host-trove-csrf="));
-  return cookie ? cookie.slice("__Host-trove-csrf=".length) : "";
+  const prefix = location.protocol === "https:" ? "__Host-trove-csrf=" : "trove-tailnet-csrf=";
+  const cookie = document.cookie.split(";").map((s) => s.trim()).find((s) => s.startsWith(prefix));
+  return cookie ? cookie.slice(prefix.length) : "";
 }
+
+function transportAllowed() { return location.protocol === "https:" || state.httpAllowed; }
 
 function lock(message) {
   state.authenticated = false;
@@ -125,8 +129,8 @@ async function enterApp() {
 }
 
 async function signIn() {
-  if (location.protocol !== "https:") {
-    $("login-error").textContent = "Open the HTTPS address to sign in.";
+  if (!transportAllowed()) {
+    $("login-error").textContent = "Connect to the private tailnet or open the HTTPS address to sign in.";
     return;
   }
   const button = $("login-btn");
@@ -150,7 +154,7 @@ async function signIn() {
     lock(error.message);
     await loadAuthState(false);
   } finally {
-    button.disabled = location.protocol !== "https:";
+    button.disabled = !transportAllowed();
   }
 }
 
@@ -165,6 +169,7 @@ async function loadAuthState(restore) {
   try {
     const info = await authRequest("GET", "state");
     state.setupRequired = info.setup_required === true;
+    state.httpAllowed = info.http_allowed === true;
     $("setup-fields").hidden = !state.setupRequired;
     $("confirm-fields").hidden = !state.setupRequired;
     $("login-description").textContent = state.setupRequired
@@ -172,9 +177,9 @@ async function loadAuthState(restore) {
       : "Sign in with your owner password.";
     $("password").autocomplete = state.setupRequired ? "new-password" : "current-password";
     $("login-btn").textContent = state.setupRequired ? "Create password" : "Sign in";
-    $("login-btn").disabled = location.protocol !== "https:";
-    $("https-note").hidden = location.protocol === "https:";
-    if (restore && !state.setupRequired && location.protocol === "https:") {
+    $("login-btn").disabled = !transportAllowed();
+    $("https-note").hidden = transportAllowed();
+    if (restore && !state.setupRequired && transportAllowed()) {
       try { await authRequest("GET", "session"); }
       catch (error) {
         if (error.status !== 401 || !csrfToken()) throw error;

@@ -198,20 +198,22 @@ Full threat model: [SECURITY.md](SECURITY.md).
 
 ## Web UI
 
-`trove serve` serves the embedded browser UI at **`/ui/`**. It is plain HTML, CSS and JavaScript with no CDN or third-party script. Owner browser access requires **HTTPS**, including on a tailnet.
+`trove serve` serves the embedded browser UI at **`/ui/`**. It is plain HTML, CSS and JavaScript with no CDN or third-party script. Owner browser access normally uses HTTPS. A private Headscale/Tailscale-only HTTP mode is also available when the browser directly reaches Trove over the encrypted WireGuard tailnet.
 
 - **First setup:** enter an existing owner (approver) token once, then enter a new password twice. The password must contain 15 to 128 characters. Setup is available only until the owner account is created; the token cannot reset an existing account.
 - **Sign in:** use the owner password on a laptop, phone or other browser. The server uses Argon2id (19 MiB, 2 iterations, parallelism 1, random salt). Passwords and raw session credentials are never logged.
-- **Session:** opaque access and refresh tokens are held in `Secure; HttpOnly; SameSite=Strict; Path=/`, host-only cookies. JavaScript never receives them and uses no localStorage or sessionStorage. Access lasts 10 minutes; refresh has a fixed 7-day limit and rotates on every refresh. Reuse of a consumed refresh token revokes its session family. A bounded 5-second exact-pair retry window handles concurrent browser requests without extending the session.
+- **Session:** opaque access and refresh tokens are held in `HttpOnly; SameSite=Strict; Path=/` cookies. HTTPS uses `Secure` and `__Host-` cookie names. The optional tailnet HTTP mode uses separate non-Secure cookie names because browsers reject `Secure` cookies on HTTP; the server accepts it only from direct peers in `100.64.0.0/10`. JavaScript never receives session tokens and uses no localStorage or sessionStorage. Access lasts 10 minutes; refresh has a fixed 7-day limit and rotates on every refresh. Reuse of a consumed refresh token revokes its session family. A bounded 5-second exact-pair retry window handles concurrent browser requests without extending the session.
 - **Account:** change the password or sign out all devices from the Account page. Password changes revoke all sessions. The UI signs out the current session after 30 minutes without activity. At most 16 device sessions are retained.
 - **Read and approve:** folder tree, rendered markdown/source, file name and content search, wikilinks, full proposal diffs, warnings, digest, Approve and Reject. Approval still sends the exact reviewed digest and refuses changed or stale proposals.
 - **API compatibility:** agent and reader bearer tokens continue to work. After owner password setup, raw approver bearer tokens can no longer approve or reject: use the owner browser session. They remain available for the other existing owner CLI operations. Keep those administrative tokens away from agents.
 - **Browser trust:** a password session does not prove that a human clicked Approve. An agent or malicious extension controlling an authenticated browser can act through it even though HttpOnly prevents token extraction. Use an owner browser/profile that agents cannot control. See [SECURITY.md](SECURITY.md).
 - Turn the static UI off with `"disable_ui": true`. This does not remove stored browser credentials or sessions.
 
-Use direct Trove TLS (`tls_cert` and `tls_key`), or terminate TLS at a reverse proxy. For a proxy, set `web_trusted_proxies` to its exact source IP CIDR (for example `192.0.2.10/32`, replace it), and have the proxy overwrite `X-Forwarded-Proto` with `https`. Preserve the external Host, or set `web_origin` to the exact external origin such as `https://trove.example.com` (no trailing slash). The server never trusts arbitrary forwarded headers. Do not trust all clients or an entire tailnet as a proxy.
+For HTTPS, use direct Trove TLS (`tls_cert` and `tls_key`), or terminate TLS at a reverse proxy. For a proxy, set `web_trusted_proxies` to its exact source IP CIDR and have the proxy overwrite `X-Forwarded-Proto` with `https`. Preserve the external Host, or set `web_origin` to the exact external origin. The server never trusts arbitrary forwarded headers.
 
-`GET /auth/state` reports whether setup is needed. `POST /auth/setup`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/logout-all`, `/auth/password` and `GET /auth/session` implement the browser session. Cookie-authenticated mutations require a matching HTTPS Origin and a session-bound CSRF cookie/header; no CORS is enabled. Login/setup/password attempts are bounded per peer and globally.
+For a private tailnet with no domain or proxy, set `web_allow_tailnet_http` to `true` and `web_origin` to the exact URL, for example `http://100.64.0.5:8470`. Browser auth over plain HTTP is accepted only when the direct peer address is in `100.64.0.0/10`; all other HTTP peers are rejected. The user device must connect to Trove's tailnet IP, not its LAN IP. WireGuard encrypts the traffic between tailnet peers, but HTTP has no TLS protection if traffic leaves the tailnet, so do not publish port 8470 or enable LAN access in this mode. The browser's session cookies cannot use the `Secure` flag in this mode.
+
+`GET /auth/state` reports whether setup is needed and whether HTTP is allowed for the current tailnet peer. `POST /auth/setup`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/logout-all`, `/auth/password` and `GET /auth/session` implement the browser session. Cookie-authenticated mutations require the exact configured Origin and a session-bound CSRF cookie/header; no CORS is enabled. Login/setup/password attempts are bounded per peer and globally.
 
 Browser credential state is `<data_dir>/browser-auth.json`, atomically written with owner-only file permissions. It contains a password hash and hashed session credentials and survives rebuilds/restarts. Back it up with the protected data directory. A corrupt state file stops server startup rather than reopening setup.
 
@@ -251,8 +253,9 @@ Server: generated by `trove init`, or copy [`trove.example.json`](trove.example.
 | `validation.frontmatter_fields` | `title`, `updated`, `status` | required frontmatter (`INDEX.md`, `README.md` exempt) |
 | `validation.extra_secret_patterns` | `[]` | your own secret regexes |
 | `disable_ui` | `false` | `true` turns off the web UI under `/ui/` |
-| `web_origin` | `https://trove.example.com` | exact external HTTPS origin (no trailing slash), needed if a proxy changes Host |
+| `web_origin` | `https://trove.example.com` | exact HTTPS origin; or exact tailnet URL when tailnet HTTP is enabled |
 | `web_trusted_proxies` | `["192.0.2.10/32"]` | exact trusted TLS proxy peer CIDRs; empty by default |
+| `web_allow_tailnet_http` | `false` | allow browser auth over HTTP only from direct peers in `100.64.0.0/10`; requires a tailnet-IP `web_origin` |
 
 Client: environment variables (see [`.env.example`](.env.example)): `TROVE_URL`, `TROVE_DIR`, the token variables above, and `TROVE_INSECURE_HTTP=1` for a deliberate plain-http setup inside a VPN.
 
