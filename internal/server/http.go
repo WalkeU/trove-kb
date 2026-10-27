@@ -109,6 +109,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Security-Policy", apiCSP)
+	// A browser opening the bare address lands on the UI; API clients
+	// (no text/html in Accept) keep getting the normal API answer.
+	if r.URL.Path == "/" && (r.Method == http.MethodGet || r.Method == http.MethodHead) &&
+		!h.cfg.DisableUI && strings.Contains(r.Header.Get("Accept"), "text/html") {
+		http.Redirect(w, r, "/ui/", http.StatusFound)
+		return
+	}
 	if r.URL.Path == "/healthz" {
 		w.Write([]byte("ok\n"))
 		return

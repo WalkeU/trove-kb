@@ -258,3 +258,20 @@ func TestTrustedProxyHTTPSUsesHostCookies(t *testing.T) {
 		}
 	}
 }
+
+func TestRootRedirectsBrowsersToUI(t *testing.T) {
+	u := newUIEnv(t, nil)
+	const peer = "192.0.2.10:51000"
+
+	rec := u.browser(t, browserReq{method: http.MethodGet, url: "http://trove.lan:8470/", remote: peer, headers: map[string]string{"Accept": "text/html,application/xhtml+xml"}})
+	if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/ui/" {
+		t.Fatalf("browser GET /: %d Location=%q, want 302 /ui/", rec.Code, rec.Header().Get("Location"))
+	}
+	// API clients keep the normal answer.
+	for _, accept := range []string{"", "application/json", "*/*"} {
+		rec := u.browser(t, browserReq{method: http.MethodGet, url: "http://trove.lan:8470/", remote: peer, headers: map[string]string{"Accept": accept}})
+		if rec.Code == http.StatusFound {
+			t.Fatalf("GET / with Accept %q must not redirect", accept)
+		}
+	}
+}

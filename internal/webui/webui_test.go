@@ -258,3 +258,16 @@ func stripComments(s string) string {
 	s = regexp.MustCompile(`(?s)/\*.*?\*/`).ReplaceAllString(s, "")
 	return regexp.MustCompile(`(?m)^\s*//.*$`).ReplaceAllString(s, "")
 }
+
+// The sign-in form starts hidden so a signed-in user never sees it flash
+// while the stored session is checked.
+func TestLoginStartsHidden(t *testing.T) {
+	html := read(t, "index.html")
+	if !regexp.MustCompile(`<main id="login"[^>]*\shidden`).MatchString(html) {
+		t.Error(`<main id="login"> must start hidden`)
+	}
+	js := read(t, "app.js")
+	if strings.Contains(js, "lock(\"\");\n  loadAuthState(true)") {
+		t.Error("boot must not call lock(\"\") before the session check")
+	}
+}

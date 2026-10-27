@@ -179,7 +179,11 @@ async function loadAuthState(restore) {
     $("login-btn").textContent = state.setupRequired ? "Create password" : "Sign in";
     $("login-btn").disabled = !transportAllowed();
     $("https-note").hidden = transportAllowed();
-    if (restore && !state.setupRequired && transportAllowed()) {
+    const restoring = restore && !state.setupRequired && transportAllowed();
+    // The sign-in form stays hidden while a stored session is being checked,
+    // so a signed-in user never sees it flash.
+    if (!restoring) $("login").hidden = false;
+    if (restoring) {
       try { await authRequest("GET", "session"); }
       catch (error) {
         if (error.status !== 401 || !csrfToken()) throw error;
@@ -189,7 +193,10 @@ async function loadAuthState(restore) {
     }
   } catch (error) {
     if (restore && error.status === 401) lock("");
-    else $("login-error").textContent = error.message;
+    else {
+      if ($("app").hidden) $("login").hidden = false;
+      $("login-error").textContent = error.message;
+    }
   }
 }
 
@@ -792,7 +799,6 @@ function init() {
   });
   for (const event of ["click", "keydown", "scroll", "touchstart"]) document.addEventListener(event, touch, { passive: true });
   window.addEventListener("hashchange", route);
-  lock("");
   loadAuthState(true);
 }
 
