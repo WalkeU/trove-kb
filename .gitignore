@@ -4,6 +4,7 @@
 /data/
 /config/
 .env
+/docker-compose.yml
 tokens.json
 trove.json
 .trove/

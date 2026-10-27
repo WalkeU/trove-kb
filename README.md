@@ -213,6 +213,8 @@ For HTTPS, use direct Trove TLS (`tls_cert` and `tls_key`), or terminate TLS at 
 
 For a private tailnet with no domain or proxy, set `web_allow_tailnet_http` to `true` and `web_origin` to the exact URL, for example `http://100.64.0.5:8470`. Browser auth over plain HTTP is accepted only when the direct peer address is in `100.64.0.0/10`; all other HTTP peers are rejected. The user device must connect to Trove's tailnet IP, not its LAN IP. WireGuard encrypts the traffic between tailnet peers, but HTTP has no TLS protection if traffic leaves the tailnet, so do not publish port 8470 or enable LAN access in this mode. The browser's session cookies cannot use the `Secure` flag in this mode.
 
+The HTTPS-or-tailnet-HTTP choice can be switched from the environment instead of `trove.json`, identically in Docker and native runs: `TROVE_WEB_ALLOW_TAILNET_HTTP` (`1`/`0`), `TROVE_WEB_ORIGIN`, `TROVE_WEB_TRUSTED_PROXIES` (comma-separated CIDRs). They override the file; empty means "use the file". See [`server.env.example`](server.env.example): copy it to `.env` for Docker Compose, or to `/etc/trove/trove.env` for the systemd unit in [`deploy/trove.service`](deploy/trove.service).
+
 `GET /auth/state` reports whether setup is needed and whether HTTP is allowed for the current tailnet peer. `POST /auth/setup`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/logout-all`, `/auth/password` and `GET /auth/session` implement the browser session. Cookie-authenticated mutations require the exact configured Origin and a session-bound CSRF cookie/header; no CORS is enabled. Login/setup/password attempts are bounded per peer and globally.
 
 Browser credential state is `<data_dir>/browser-auth.json`, atomically written with owner-only file permissions. It contains a password hash and hashed session credentials and survives rebuilds/restarts. Back it up with the protected data directory. A corrupt state file stops server startup rather than reopening setup.
@@ -273,9 +275,12 @@ make cross                        # linux, darwin, windows (amd64, arm64) into d
 
 ```sh
 docker build -t trove:local .
-cp docker-compose.example.yml docker-compose.yml   # expects a trove init folder at ./trove; adjust
+cp docker-compose.example.yml docker-compose.yml   # expects a trove init folder at ./trove; do not edit it
+cp server.env.example .env                         # all per-host values go here (uid/gid, bind address, HTTPS mode)
 docker compose up -d
 ```
+
+**Native service** (no Docker): [`deploy/trove.service`](deploy/trove.service) with the same variables in `/etc/trove/trove.env`.
 
 The image runs as a non-root user on Alpine with `git`, works with a read-only root filesystem, exposes `8470`, reads `/config/trove.json` and keeps data in `/data`; `trove init` in the image writes its setup to `/data` (`TROVE_INIT_DIR`). A named volume is writable by the image user; a host folder on Linux needs `--user` (see Quick start). The example compose file binds to `127.0.0.1` only, drops all capabilities and sets memory and pid limits. Base images are pinned by tag only: for production builds pin them by digest (`FROM image:tag@sha256:...`) after checking the digest yourself.
 

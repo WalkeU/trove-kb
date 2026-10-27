@@ -1,18 +1,23 @@
-# Example only, not a production setup. Adjust ports, paths and the
-# network exposure to your environment (a VPN or reverse proxy with TLS
-# is recommended; Trove itself makes no assumption about the network).
+# Used as is: `cp docker-compose.example.yml docker-compose.yml`, then put
+# every host-specific value in ./.env (copy of server.env.example). Do not
+# edit this file per host, so `git pull` stays clean.
 #
 # Expects a "trove init" folder at ./trove (./trove/config, ./trove/data).
-# The init files belong to the user who ran it (mode 0600): on Linux set
-# user to that uid:gid (e.g. "1000:1000", see `id -u` and `id -g`).
+# The init files belong to the user who ran it (mode 0600): set TROVE_UID and
+# TROVE_GID in .env to that uid:gid (see `id -u` and `id -g`).
 services:
   trove:
     build: .
     image: trove:local
     restart: unless-stopped
-    # user: "1000:1000"
-    # 0.0.0.0 inside the container only; the port is published on 127.0.0.1.
+    user: "${TROVE_UID:-1000}:${TROVE_GID:-1000}"
+    # 0.0.0.0 inside the container only; the host side is TROVE_BIND below.
     command: ["serve", "--listen", "0.0.0.0:8470"]
+    # Same variable names as a native run (see server.env.example).
+    environment:
+      TROVE_WEB_ALLOW_TAILNET_HTTP: "${TROVE_WEB_ALLOW_TAILNET_HTTP:-}"
+      TROVE_WEB_ORIGIN: "${TROVE_WEB_ORIGIN:-}"
+      TROVE_WEB_TRUSTED_PROXIES: "${TROVE_WEB_TRUSTED_PROXIES:-}"
     read_only: true
     cap_drop: [ALL]
     security_opt:
@@ -22,7 +27,7 @@ services:
     tmpfs:
       - /tmp
     ports:
-      - "127.0.0.1:8470:8470"
+      - "${TROVE_BIND:-127.0.0.1}:${TROVE_PORT:-8470}:8470"
     volumes:
       - ./trove/data:/data
       - ./trove/config:/config:ro

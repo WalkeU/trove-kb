@@ -139,6 +139,9 @@ func Load(path string) (Config, error) {
 	cfg.InstructionsFile = resolve(cfg.InstructionsFile)
 	cfg.TLSCert = resolve(cfg.TLSCert)
 	cfg.TLSKey = resolve(cfg.TLSKey)
+	if err := applyEnv(&cfg); err != nil {
+		return cfg, err
+	}
 	if cfg.TokensFile != "" {
 		td, err := os.ReadFile(cfg.TokensFile)
 		if err != nil {
@@ -151,6 +154,38 @@ func Load(path string) (Config, error) {
 		cfg.Tokens = append(cfg.Tokens, extra...)
 	}
 	return cfg, cfg.Validate()
+}
+
+// applyEnv lets the browser-auth transport be switched from the environment
+// (docker compose env_file, systemd EnvironmentFile) without editing the JSON.
+// An unset or empty variable leaves the config file value alone.
+//
+//	TROVE_WEB_ALLOW_TAILNET_HTTP  1/true or 0/false
+//	TROVE_WEB_ORIGIN              exact browser origin
+//	TROVE_WEB_TRUSTED_PROXIES     comma-separated proxy CIDRs
+func applyEnv(c *Config) error {
+	if v := strings.TrimSpace(os.Getenv("TROVE_WEB_ALLOW_TAILNET_HTTP")); v != "" {
+		switch strings.ToLower(v) {
+		case "1", "true":
+			c.WebAllowTailnetHTTP = true
+		case "0", "false":
+			c.WebAllowTailnetHTTP = false
+		default:
+			return fmt.Errorf("TROVE_WEB_ALLOW_TAILNET_HTTP must be 1, true, 0 or false")
+		}
+	}
+	if v := strings.TrimSpace(os.Getenv("TROVE_WEB_ORIGIN")); v != "" {
+		c.WebOrigin = v
+	}
+	if v := strings.TrimSpace(os.Getenv("TROVE_WEB_TRUSTED_PROXIES")); v != "" {
+		c.WebTrustedProxies = nil
+		for _, p := range strings.Split(v, ",") {
+			if p = strings.TrimSpace(p); p != "" {
+				c.WebTrustedProxies = append(c.WebTrustedProxies, p)
+			}
+		}
+	}
+	return nil
 }
 
 // Validate checks the configuration for obvious mistakes.

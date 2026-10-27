@@ -1,0 +1,26 @@
+# Native (no Docker) example. Untested template: adjust paths and user.
+#   install -m 0755 trove /usr/local/bin/trove
+#   useradd --system --home /var/lib/trove --shell /usr/sbin/nologin trove
+#   config + tokens: /etc/trove/trove.json (data_dir /var/lib/trove), mode 0640 root:trove
+#   env:             /etc/trove/trove.env (copy of server.env.example), mode 0640 root:trove
+[Unit]
+Description=Trove KB server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=trove
+Group=trove
+Environment=TROVE_CONFIG=/etc/trove/trove.json
+EnvironmentFile=-/etc/trove/trove.env
+ExecStart=/usr/local/bin/trove serve
+Restart=on-failure
+StateDirectory=trove
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/trove
+
+[Install]
+WantedBy=multi-user.target

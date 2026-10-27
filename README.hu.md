@@ -237,6 +237,8 @@ HTTPS-hez használhatsz közvetlen Trove TLS-t (`tls_cert`, `tls_key`) vagy HTTP
 
 Ha nem akarsz domaint vagy proxyt, engedélyezheted a közvetlen HTTP-t a tailneten: állítsd a `web_allow_tailnet_http` értékét `true`-ra, a `web_origin` pedig legyen a pontos tailnet URL, például `http://100.64.0.5:8470`. A böngészős hitelesítést a szerver csak a `100.64.0.0/10` tartományba eső közvetlen tailnet peer IP-ről fogadja el. A laptopon/telefonon a tailnet IP-t használd, ne a LAN címet. A WireGuard titkosítja a tailnetes forgalmat, de a HTTP-nak nincs TLS-védelme, ha kikerül a tailnetből; ezért ne tedd publikussá a 8470-es portot, és ne engedélyezd ezen az üzemmódon a LAN-hozzáférést. A session cookie-k ebben a módban nem lehetnek Secure jelölésűek.
 
+A HTTPS vagy tailnet-HTTP választás a `trove.json` helyett környezeti változóból is állítható, Dockerben és natív futtatásnál ugyanúgy: `TROVE_WEB_ALLOW_TAILNET_HTTP` (`1`/`0`), `TROVE_WEB_ORIGIN`, `TROVE_WEB_TRUSTED_PROXIES` (vesszővel elválasztott CIDR-ek). Felülírják a fájlt; az üres érték a fájlét jelenti. Lásd [`server.env.example`](server.env.example): Docker Compose-hoz másold `.env` néven, a [`deploy/trove.service`](deploy/trove.service) systemd unithoz `/etc/trove/trove.env` néven.
+
 A `GET /auth/state` mutatja, kell-e első beállítás, és az aktuális peer használhat-e HTTP-t. A `POST /auth/setup`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/logout-all`, `/auth/password` és a `GET /auth/session` kezeli a böngészős sessiont. A cookie-val hitelesített írásokhoz pontosan egyező Origin és sessionhöz kötött CSRF cookie/fejléc kell; CORS nincs. A belépési/beállítási/jelszócsere-próbálkozások peer szerint és összesítve is korlátozottak.
 
 A hitelesítés állapota: `<data_dir>/browser-auth.json`, atomikus írással, csak owner által olvasható fájljoggal. Jelszóhasht és sessiontitkok hashét tartalmazza, újraépítés és restart után is megmarad. A védett adatmappával együtt mentsd. Hibás állapotfájlnál a szerver leáll, nem nyitja meg újra a beállítást.
@@ -297,9 +299,12 @@ make cross                        # minden platformra a dist/ mappába
 
 ```sh
 docker build -t trove:local .
-cp docker-compose.example.yml docker-compose.yml   # egy trove init mappát vár ./trove alatt; igazítsd
+cp docker-compose.example.yml docker-compose.yml   # egy trove init mappát vár ./trove alatt; ne szerkeszd
+cp server.env.example .env                         # minden hoszt-specifikus érték ide (uid/gid, bind cím, HTTPS mód)
 docker compose up -d
 ```
+
+**Natív szolgáltatás** (Docker nélkül): [`deploy/trove.service`](deploy/trove.service), ugyanazokkal a változókkal a `/etc/trove/trove.env`-ben.
 
 Az image nem root felhasználóként fut (Alpine + git), csak olvasható root fájlrendszerrel is működik, a `8470`-es portot nyitja, a konfigot a `/config/trove.json`-ból olvassa, az adat a `/data` alatt van; az image-ben futó `trove init` a `/data` alá írja a beállítást (`TROVE_INIT_DIR`). Named volume-ot az image felhasználója írni tud; Linuxon hoszt mappához `--user` kell (lásd Gyors kezdés). A minta compose csak `127.0.0.1`-re köt, minden capability-t eldob, memória- és pid-korlátot állít. Az alap image-ek csak taggel vannak rögzítve; éles buildhez rögzítsd őket digesttel (`FROM image:tag@sha256:...`), a digestet magad ellenőrizve.
 
