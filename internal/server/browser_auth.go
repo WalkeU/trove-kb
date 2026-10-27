@@ -26,19 +26,19 @@ import (
 )
 
 const (
-	browserAuthFile      = "browser-auth.json"
-	accessCookie         = "__Host-trove-access"
-	refreshCookie        = "__Host-trove-refresh"
-	csrfCookie           = "__Host-trove-csrf"
-	tailnetAccessCookie  = "trove-tailnet-access"
-	tailnetRefreshCookie = "trove-tailnet-refresh"
-	tailnetCSRFCookie    = "trove-tailnet-csrf"
-	accessLifetime       = 10 * time.Minute
-	refreshLifetime      = 7 * 24 * time.Hour
-	refreshRetryWindow   = 5 * time.Second
-	passwordMemory       = 19 * 1024
-	passwordIterations   = 2
-	passwordParallelism  = 1
+	browserAuthFile     = "browser-auth.json"
+	accessCookie        = "__Host-trove-access"
+	refreshCookie       = "__Host-trove-refresh"
+	csrfCookie          = "__Host-trove-csrf"
+	plainAccessCookie   = "trove-http-access"
+	plainRefreshCookie  = "trove-http-refresh"
+	plainCSRFCookie     = "trove-http-csrf"
+	accessLifetime      = 10 * time.Minute
+	refreshLifetime     = 7 * 24 * time.Hour
+	refreshRetryWindow  = 5 * time.Second
+	passwordMemory      = 19 * 1024
+	passwordIterations  = 2
+	passwordParallelism = 1
 )
 
 type passwordRecord struct {
@@ -328,15 +328,15 @@ func requestCookie(r *http.Request, name string) string {
 	return c.Value
 }
 
-func browserCookieNames(tailnetHTTP bool) (string, string, string) {
-	if tailnetHTTP {
-		return tailnetAccessCookie, tailnetRefreshCookie, tailnetCSRFCookie
+func browserCookieNames(plainHTTP bool) (string, string, string) {
+	if plainHTTP {
+		return plainAccessCookie, plainRefreshCookie, plainCSRFCookie
 	}
 	return accessCookie, refreshCookie, csrfCookie
 }
 
-func (b *browserAuth) access(r *http.Request, tailnetHTTP bool) (auth.Actor, bool) {
-	accessName, _, _ := browserCookieNames(tailnetHTTP)
+func (b *browserAuth) access(r *http.Request, plainHTTP bool) (auth.Actor, bool) {
+	accessName, _, _ := browserCookieNames(plainHTTP)
 	token := requestCookie(r, accessName)
 	id := tokenFamily(token)
 	if id == "" {
@@ -351,32 +351,32 @@ func (b *browserAuth) access(r *http.Request, tailnetHTTP bool) (auth.Actor, boo
 	return auth.Actor{Name: b.state.Owner, Role: auth.RoleApprover}, true
 }
 
-func csrfMatches(r *http.Request, s *browserSession, tailnetHTTP bool) bool {
-	_, _, csrfName := browserCookieNames(tailnetHTTP)
+func csrfMatches(r *http.Request, s *browserSession, plainHTTP bool) bool {
+	_, _, csrfName := browserCookieNames(plainHTTP)
 	cookie := requestCookie(r, csrfName)
 	header := r.Header.Get("X-Trove-CSRF")
 	return len(cookie) == 43 && subtle.ConstantTimeCompare([]byte(cookie), []byte(header)) == 1 && equalHash(s.CSRFHash, auth.Hash(cookie))
 }
 
-func (b *browserAuth) csrf(r *http.Request, tailnetHTTP bool) bool {
-	accessName, _, _ := browserCookieNames(tailnetHTTP)
+func (b *browserAuth) csrf(r *http.Request, plainHTTP bool) bool {
+	accessName, _, _ := browserCookieNames(plainHTTP)
 	token := requestCookie(r, accessName)
 	id := tokenFamily(token)
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	s := b.state.Sessions[id]
-	return s != nil && time.Now().Before(s.AccessExpires) && equalHash(s.AccessHash, auth.Hash(token)) && csrfMatches(r, s, tailnetHTTP)
+	return s != nil && time.Now().Before(s.AccessExpires) && equalHash(s.AccessHash, auth.Hash(token)) && csrfMatches(r, s, plainHTTP)
 }
 
-func (b *browserAuth) refresh(r *http.Request, tailnetHTTP bool) (browserTokens, error) {
-	accessName, refreshName, csrfName := browserCookieNames(tailnetHTTP)
+func (b *browserAuth) refresh(r *http.Request, plainHTTP bool) (browserTokens, error) {
+	accessName, refreshName, csrfName := browserCookieNames(plainHTTP)
 	token := requestCookie(r, refreshName)
 	id := tokenFamily(token)
 	now := time.Now()
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	s := b.state.Sessions[id]
-	if s == nil || !now.Before(s.RefreshExpires) || !csrfMatches(r, s, tailnetHTTP) {
+	if s == nil || !now.Before(s.RefreshExpires) || !csrfMatches(r, s, plainHTTP) {
 		return browserTokens{}, errors.New("invalid session")
 	}
 	hash := auth.Hash(token)
@@ -428,14 +428,14 @@ func (b *browserAuth) refresh(r *http.Request, tailnetHTTP bool) (browserTokens,
 	return t, nil
 }
 
-func (b *browserAuth) logout(r *http.Request, all, tailnetHTTP bool) error {
-	_, refreshName, _ := browserCookieNames(tailnetHTTP)
+func (b *browserAuth) logout(r *http.Request, all, plainHTTP bool) error {
+	_, refreshName, _ := browserCookieNames(plainHTTP)
 	token := requestCookie(r, refreshName)
 	id := tokenFamily(token)
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	s := b.state.Sessions[id]
-	if s == nil || !equalHash(s.RefreshHash, auth.Hash(token)) || !csrfMatches(r, s, tailnetHTTP) {
+	if s == nil || !equalHash(s.RefreshHash, auth.Hash(token)) || !csrfMatches(r, s, plainHTTP) {
 		return errors.New("invalid session")
 	}
 	n := b.clone()
@@ -451,7 +451,7 @@ func (b *browserAuth) logout(r *http.Request, all, tailnetHTTP bool) error {
 	return nil
 }
 
-func (b *browserAuth) changePassword(r *http.Request, old, next string, tailnetHTTP bool) error {
+func (b *browserAuth) changePassword(r *http.Request, old, next string, plainHTTP bool) error {
 	b.mu.Lock()
 	p := b.state.Password
 	b.mu.Unlock()
@@ -467,10 +467,10 @@ func (b *browserAuth) changePassword(r *http.Request, old, next string, tailnetH
 	if b.state.Password != p {
 		return errors.New("invalid credentials")
 	}
-	accessName, _, _ := browserCookieNames(tailnetHTTP)
+	accessName, _, _ := browserCookieNames(plainHTTP)
 	token := requestCookie(r, accessName)
 	s := b.state.Sessions[tokenFamily(token)]
-	if s == nil || !equalHash(s.AccessHash, auth.Hash(token)) || !csrfMatches(r, s, tailnetHTTP) {
+	if s == nil || !equalHash(s.AccessHash, auth.Hash(token)) || !csrfMatches(r, s, plainHTTP) {
 		return errors.New("invalid session")
 	}
 	n := b.clone()
@@ -515,9 +515,9 @@ func (b *browserAuth) allowAttempt(r *http.Request) bool {
 	return window.Count <= 8
 }
 
-func setBrowserCookies(w http.ResponseWriter, t browserTokens, tailnetHTTP bool) {
-	accessName, refreshName, csrfName := browserCookieNames(tailnetHTTP)
-	secure := !tailnetHTTP
+func setBrowserCookies(w http.ResponseWriter, t browserTokens, plainHTTP bool) {
+	accessName, refreshName, csrfName := browserCookieNames(plainHTTP)
+	secure := !plainHTTP
 	for _, c := range []*http.Cookie{
 		{Name: accessName, Value: t.Access, Expires: t.AccessExpires, MaxAge: int(time.Until(t.AccessExpires).Seconds()), HttpOnly: true},
 		{Name: refreshName, Value: t.Refresh, Expires: t.RefreshExpires, MaxAge: int(time.Until(t.RefreshExpires).Seconds()), HttpOnly: true},
@@ -528,26 +528,18 @@ func setBrowserCookies(w http.ResponseWriter, t browserTokens, tailnetHTTP bool)
 	}
 }
 
-func clearBrowserCookies(w http.ResponseWriter, tailnetHTTP bool) {
-	accessName, refreshName, csrfName := browserCookieNames(tailnetHTTP)
+func clearBrowserCookies(w http.ResponseWriter, plainHTTP bool) {
+	accessName, refreshName, csrfName := browserCookieNames(plainHTTP)
 	for _, name := range []string{accessName, refreshName, csrfName} {
-		http.SetCookie(w, &http.Cookie{Name: name, Value: "", Path: "/", Secure: !tailnetHTTP, HttpOnly: name != csrfName, SameSite: http.SameSiteStrictMode, MaxAge: -1, Expires: time.Unix(1, 0)})
+		http.SetCookie(w, &http.Cookie{Name: name, Value: "", Path: "/", Secure: !plainHTTP, HttpOnly: name != csrfName, SameSite: http.SameSiteStrictMode, MaxAge: -1, Expires: time.Unix(1, 0)})
 	}
 }
 
-// tailnetHTTPRequest permits plaintext browser requests only when they arrive
-// directly from a Tailscale/Headscale IPv4 peer. WireGuard encrypts that path.
-func (h *Handler) tailnetHTTPRequest(r *http.Request) bool {
-	if !h.cfg.WebAllowTailnetHTTP || r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
-		return false
-	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return false
-	}
-	ip := net.ParseIP(host)
-	_, tailnet, _ := net.ParseCIDR("100.64.0.0/10")
-	return ip != nil && tailnet.Contains(ip)
+// plainHTTPRequest reports an allowed plaintext browser request: web_require_https is
+// off, the connection has no TLS, and no proxy claims HTTPS (an X-Forwarded-Proto from
+// an untrusted peer is refused instead of half-working with non-Secure cookies).
+func (h *Handler) plainHTTPRequest(r *http.Request) bool {
+	return !h.cfg.WebRequireHTTPS && r.TLS == nil && r.Header.Get("X-Forwarded-Proto") != "https"
 }
 
 // httpsBrowserRequest trusts direct TLS or X-Forwarded-Proto only from an
@@ -577,7 +569,7 @@ func (h *Handler) httpsBrowserRequest(r *http.Request) bool {
 }
 
 func (h *Handler) secureBrowserRequest(r *http.Request) bool {
-	return h.httpsBrowserRequest(r) || h.tailnetHTTPRequest(r)
+	return h.httpsBrowserRequest(r) || h.plainHTTPRequest(r)
 }
 
 func (h *Handler) authOrigin(r *http.Request) bool {
@@ -587,14 +579,14 @@ func (h *Handler) authOrigin(r *http.Request) bool {
 	want := h.cfg.WebOrigin
 	if want == "" {
 		scheme := "https"
-		if h.tailnetHTTPRequest(r) {
+		if h.plainHTTPRequest(r) {
 			scheme = "http"
 		}
 		want = scheme + "://" + r.Host
 	}
 	u, err := url.Parse(r.Header.Get("Origin"))
 	wantScheme := "https"
-	if h.tailnetHTTPRequest(r) {
+	if h.plainHTTPRequest(r) {
 		wantScheme = "http"
 	}
 	if err != nil || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != "" || u.Scheme != wantScheme {
@@ -628,7 +620,7 @@ func (h *Handler) handleBrowserAuth(w http.ResponseWriter, r *http.Request) {
 	}
 	b := h.browser
 	if r.Method == http.MethodGet && r.URL.Path == "/auth/state" {
-		writeJSON(w, http.StatusOK, map[string]any{"setup_required": !b.configured(), "https_required": !h.tailnetHTTPRequest(r), "http_allowed": h.tailnetHTTPRequest(r)})
+		writeJSON(w, http.StatusOK, map[string]any{"setup_required": !b.configured(), "https_required": h.cfg.WebRequireHTTPS, "http_allowed": h.plainHTTPRequest(r)})
 		return
 	}
 	if !h.secureBrowserRequest(r) {
@@ -636,8 +628,8 @@ func (h *Handler) handleBrowserAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == http.MethodGet && r.URL.Path == "/auth/session" {
-		tailnetHTTP := h.tailnetHTTPRequest(r)
-		actor, ok := b.access(r, tailnetHTTP)
+		plainHTTP := h.plainHTTPRequest(r)
+		actor, ok := b.access(r, plainHTTP)
 		if !ok {
 			writeErr(w, http.StatusUnauthorized, "login required", nil)
 			return
@@ -653,7 +645,7 @@ func (h *Handler) handleBrowserAuth(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusForbidden, "HTTPS and a matching Origin are required", nil)
 		return
 	}
-	tailnetHTTP := h.tailnetHTTPRequest(r)
+	plainHTTP := h.plainHTTPRequest(r)
 	switch r.URL.Path {
 	case "/auth/setup", "/auth/login":
 		if !b.allowAttempt(r) {
@@ -700,27 +692,27 @@ func (h *Handler) handleBrowserAuth(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusUnauthorized, "invalid credentials", nil)
 			return
 		}
-		setBrowserCookies(w, tokens, tailnetHTTP)
+		setBrowserCookies(w, tokens, plainHTTP)
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/auth/refresh":
-		tokens, err := b.refresh(r, tailnetHTTP)
+		tokens, err := b.refresh(r, plainHTTP)
 		if err != nil {
-			clearBrowserCookies(w, tailnetHTTP)
+			clearBrowserCookies(w, plainHTTP)
 			writeErr(w, http.StatusUnauthorized, "session has expired; log in again", nil)
 			return
 		}
-		setBrowserCookies(w, tokens, tailnetHTTP)
+		setBrowserCookies(w, tokens, plainHTTP)
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/auth/logout", "/auth/logout-all":
-		if err := b.logout(r, r.URL.Path == "/auth/logout-all", tailnetHTTP); err != nil {
-			clearBrowserCookies(w, tailnetHTTP)
+		if err := b.logout(r, r.URL.Path == "/auth/logout-all", plainHTTP); err != nil {
+			clearBrowserCookies(w, plainHTTP)
 			writeErr(w, http.StatusUnauthorized, "login required", nil)
 			return
 		}
-		clearBrowserCookies(w, tailnetHTTP)
+		clearBrowserCookies(w, plainHTTP)
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case "/auth/password":
-		if _, ok := b.access(r, tailnetHTTP); !ok || !b.csrf(r, tailnetHTTP) {
+		if _, ok := b.access(r, plainHTTP); !ok || !b.csrf(r, plainHTTP) {
 			writeErr(w, http.StatusUnauthorized, "login required", nil)
 			return
 		}
@@ -747,11 +739,11 @@ func (h *Handler) handleBrowserAuth(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusBadRequest, "passwords must match and contain 15 to 128 characters", nil)
 			return
 		}
-		if err := b.changePassword(r, req.Current, req.Password, tailnetHTTP); err != nil {
+		if err := b.changePassword(r, req.Current, req.Password, plainHTTP); err != nil {
 			writeErr(w, http.StatusUnauthorized, "invalid credentials", nil)
 			return
 		}
-		clearBrowserCookies(w, tailnetHTTP)
+		clearBrowserCookies(w, plainHTTP)
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	default:
 		writeErr(w, http.StatusNotFound, "not found", nil)
@@ -767,14 +759,14 @@ func (h *Handler) browserActor(w http.ResponseWriter, r *http.Request) (auth.Act
 		writeErr(w, http.StatusServiceUnavailable, "browser authentication is unavailable", nil)
 		return auth.Actor{}, false
 	}
-	tailnetHTTP := h.tailnetHTTPRequest(r)
-	actor, ok := h.browser.access(r, tailnetHTTP)
+	plainHTTP := h.plainHTTPRequest(r)
+	actor, ok := h.browser.access(r, plainHTTP)
 	if !ok {
 		writeErr(w, http.StatusUnauthorized, "login required", nil)
 		return auth.Actor{}, false
 	}
 	if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
-		if !h.authOrigin(r) || !h.browser.csrf(r, tailnetHTTP) {
+		if !h.authOrigin(r) || !h.browser.csrf(r, plainHTTP) {
 			writeErr(w, http.StatusForbidden, "invalid request origin or CSRF token", nil)
 			return auth.Actor{}, false
 		}

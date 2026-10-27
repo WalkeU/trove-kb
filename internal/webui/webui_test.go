@@ -241,7 +241,7 @@ func TestTokenHandling(t *testing.T) {
 	if !strings.Contains(app, `const API = "../v1/";`) || !strings.Contains(app, `const AUTH = "../auth/";`) {
 		t.Error("API and auth bases must be relative")
 	}
-	if !strings.Contains(app, `__Host-trove-csrf=`) || !strings.Contains(app, `trove-tailnet-csrf=`) || regexp.MustCompile(`document\.cookie\s*=`).MatchString(app) {
+	if !strings.Contains(app, `__Host-trove-csrf=`) || !strings.Contains(app, `trove-http-csrf=`) || regexp.MustCompile(`document\.cookie\s*=`).MatchString(app) {
 		t.Error("JavaScript may read only the CSRF cookie; it must not write cookies")
 	}
 	if strings.Contains(app, "approve all") || strings.Contains(strings.ToLower(app), "approveall") {

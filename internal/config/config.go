@@ -66,11 +66,12 @@ type Config struct {
 	// DisableUI turns off the built-in web UI under /ui/ (static files;
 	// the API stays the same either way).
 	DisableUI bool `json:"disable_ui,omitempty"`
-	// WebAllowTailnetHTTP permits browser authentication over the private
-	// 100.64.0.0/10 tailnet only. WebOrigin must be set to the exact HTTP origin.
+	// WebRequireHTTPS refuses browser sign-in over plain HTTP. Off by default:
+	// plain HTTP works from any address, like a typical self-hosted app.
+	WebRequireHTTPS bool `json:"web_require_https,omitempty"`
+	// WebAllowTailnetHTTP is deprecated and ignored (plain HTTP is the default now).
 	WebAllowTailnetHTTP bool `json:"web_allow_tailnet_http,omitempty"`
-	// WebOrigin is the exact browser origin when the external Host differs or
-	// when tailnet-only HTTP is explicitly enabled.
+	// WebOrigin is the exact browser origin when the external Host differs.
 	WebOrigin string `json:"web_origin,omitempty"`
 	// WebTrustedProxies may assert X-Forwarded-Proto=https for browser auth.
 	WebTrustedProxies []string `json:"web_trusted_proxies,omitempty"`
@@ -160,18 +161,18 @@ func Load(path string) (Config, error) {
 // (docker compose env_file, systemd EnvironmentFile) without editing the JSON.
 // An unset or empty variable leaves the config file value alone.
 //
-//	TROVE_WEB_ALLOW_TAILNET_HTTP  1/true or 0/false
+//	TROVE_WEB_REQUIRE_HTTPS       1/true or 0/false
 //	TROVE_WEB_ORIGIN              exact browser origin
 //	TROVE_WEB_TRUSTED_PROXIES     comma-separated proxy CIDRs
 func applyEnv(c *Config) error {
-	if v := strings.TrimSpace(os.Getenv("TROVE_WEB_ALLOW_TAILNET_HTTP")); v != "" {
+	if v := strings.TrimSpace(os.Getenv("TROVE_WEB_REQUIRE_HTTPS")); v != "" {
 		switch strings.ToLower(v) {
 		case "1", "true":
-			c.WebAllowTailnetHTTP = true
+			c.WebRequireHTTPS = true
 		case "0", "false":
-			c.WebAllowTailnetHTTP = false
+			c.WebRequireHTTPS = false
 		default:
-			return fmt.Errorf("TROVE_WEB_ALLOW_TAILNET_HTTP must be 1, true, 0 or false")
+			return fmt.Errorf("TROVE_WEB_REQUIRE_HTTPS must be 1, true, 0 or false")
 		}
 	}
 	if v := strings.TrimSpace(os.Getenv("TROVE_WEB_ORIGIN")); v != "" {
@@ -198,21 +199,9 @@ func (c Config) Validate() error {
 	}
 	if c.WebOrigin != "" {
 		u, err := url.Parse(c.WebOrigin)
-		validScheme := u != nil && (u.Scheme == "https" || (c.WebAllowTailnetHTTP && u.Scheme == "http"))
+		validScheme := u != nil && (u.Scheme == "https" || (!c.WebRequireHTTPS && u.Scheme == "http"))
 		if err != nil || !validScheme || u.Host == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
-			return fmt.Errorf("web_origin must be an HTTPS origin, or HTTP when web_allow_tailnet_http is enabled, without path, query or fragment")
-		}
-	}
-	if c.WebAllowTailnetHTTP && (c.WebOrigin == "" || !strings.HasPrefix(c.WebOrigin, "http://")) {
-		return fmt.Errorf("web_allow_tailnet_http requires an exact http:// web_origin")
-	}
-	if c.WebAllowTailnetHTTP {
-		u, _ := url.Parse(c.WebOrigin)
-		host, _, err := net.SplitHostPort(u.Host)
-		ip := net.ParseIP(host)
-		_, tailnet, _ := net.ParseCIDR("100.64.0.0/10")
-		if err != nil || ip == nil || !tailnet.Contains(ip) {
-			return fmt.Errorf("web_origin must use the Trove tailnet IP when web_allow_tailnet_http is enabled")
+			return fmt.Errorf("web_origin must be an origin without path, query or fragment, and https when web_require_https is on")
 		}
 	}
 	for _, cidr := range c.WebTrustedProxies {

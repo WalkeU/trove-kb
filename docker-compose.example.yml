@@ -15,7 +15,7 @@ services:
     command: ["serve", "--listen", "0.0.0.0:8470"]
     # Same variable names as a native run (see server.env.example).
     environment:
-      TROVE_WEB_ALLOW_TAILNET_HTTP: "${TROVE_WEB_ALLOW_TAILNET_HTTP:-}"
+      TROVE_WEB_REQUIRE_HTTPS: "${TROVE_WEB_REQUIRE_HTTPS:-}"
       TROVE_WEB_ORIGIN: "${TROVE_WEB_ORIGIN:-}"
       TROVE_WEB_TRUSTED_PROXIES: "${TROVE_WEB_TRUSTED_PROXIES:-}"
     read_only: true

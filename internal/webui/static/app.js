@@ -33,7 +33,7 @@ class ApiError extends Error {
 }
 
 function csrfToken() {
-  const prefix = location.protocol === "https:" ? "__Host-trove-csrf=" : "trove-tailnet-csrf=";
+  const prefix = location.protocol === "https:" ? "__Host-trove-csrf=" : "trove-http-csrf=";
   const cookie = document.cookie.split(";").map((s) => s.trim()).find((s) => s.startsWith(prefix));
   return cookie ? cookie.slice(prefix.length) : "";
 }
@@ -130,7 +130,7 @@ async function enterApp() {
 
 async function signIn() {
   if (!transportAllowed()) {
-    $("login-error").textContent = "Connect to the private tailnet or open the HTTPS address to sign in.";
+    $("login-error").textContent = "This server requires HTTPS to sign in. Open the HTTPS address.";
     return;
   }
   const button = $("login-btn");

@@ -469,6 +469,14 @@ func Serve(ctx context.Context, cfg config.Config, logger *log.Logger) error {
 	if cfg.TLSCert == "" && !isLoopback(cfg.Listen) {
 		logger.Printf("WARNING: listening on %s without TLS; tokens travel in clear text unless the network (VPN, reverse proxy) protects them", cfg.Listen)
 	}
+	if cfg.WebRequireHTTPS {
+		logger.Printf("browser sign-in: HTTPS only (web_require_https)")
+	} else {
+		logger.Printf("browser sign-in: plain HTTP allowed; passwords and session cookies are not encrypted on plain HTTP. Set web_require_https (TROVE_WEB_REQUIRE_HTTPS=1) for anything beyond a trusted network")
+	}
+	if cfg.WebAllowTailnetHTTP {
+		logger.Printf("WARNING: web_allow_tailnet_http is deprecated and ignored; plain HTTP sign-in is allowed from any address unless web_require_https is set")
+	}
 	handler := NewHandler(e, keys, logger)
 	if err := handler.browserStartupError(); err != nil {
 		return err
