@@ -109,7 +109,7 @@ func TestAPIHeadersAndNoCORS(t *testing.T) {
 		for k, v := range map[string]string{
 			"X-Content-Type-Options":  "nosniff",
 			"Cache-Control":           "no-store",
-			"Referrer-Policy":         "no-referrer",
+			"Referrer-Policy":         "same-origin",
 			"Content-Security-Policy": apiCSP,
 			"X-Frame-Options":         "DENY",
 		} {

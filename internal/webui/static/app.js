@@ -64,7 +64,7 @@ function lock(message) {
 async function request(base, method, path, body, extraHeaders = {}) {
   const headers = { Accept: "application/json", ...extraHeaders };
   if (method !== "GET" && method !== "HEAD") headers["X-Trove-CSRF"] = csrfToken();
-  const init = { method, headers, credentials: "same-origin", cache: "no-store", redirect: "error", referrerPolicy: "no-referrer", mode: "same-origin" };
+  const init = { method, headers, credentials: "same-origin", cache: "no-store", redirect: "error", referrerPolicy: "same-origin", mode: "same-origin" };
   if (body !== undefined) {
     headers["Content-Type"] = "application/json";
     init.body = JSON.stringify(body);

@@ -35,7 +35,7 @@ var assets = map[string]struct{ file, ctype string }{
 // SetSecurityHeaders writes the headers shared by the UI and the API.
 func SetSecurityHeaders(h http.Header) {
 	h.Set("X-Content-Type-Options", "nosniff")
-	h.Set("Referrer-Policy", "no-referrer")
+	h.Set("Referrer-Policy", "same-origin")
 	h.Set("X-Frame-Options", "DENY")
 	h.Set("Cross-Origin-Opener-Policy", "same-origin")
 	h.Set("Cross-Origin-Resource-Policy", "same-origin")

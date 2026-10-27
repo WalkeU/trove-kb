@@ -38,7 +38,7 @@ func TestAssetsServedWithHeaders(t *testing.T) {
 		checks := map[string]string{
 			"Content-Security-Policy": CSP,
 			"X-Content-Type-Options":  "nosniff",
-			"Referrer-Policy":         "no-referrer",
+			"Referrer-Policy":         "same-origin",
 			"X-Frame-Options":         "DENY",
 			"Cache-Control":           "no-store",
 		}
@@ -233,7 +233,7 @@ func TestTokenHandling(t *testing.T) {
 	if strings.Count(app, "fetch(") != 1 || !strings.Contains(app, "fetch(base + path, init)") {
 		t.Error("all requests must go through the shared same-origin request function")
 	}
-	for _, want := range []string{`credentials: "same-origin"`, `redirect: "error"`, `referrerPolicy: "no-referrer"`, `mode: "same-origin"`} {
+	for _, want := range []string{`credentials: "same-origin"`, `redirect: "error"`, `referrerPolicy: "same-origin"`, `mode: "same-origin"`} {
 		if !strings.Contains(app, want) {
 			t.Errorf("fetch options lack %s", want)
 		}
