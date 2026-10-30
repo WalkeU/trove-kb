@@ -597,8 +597,7 @@ function fullFile(text) {
 
 function renderFull(text) {
   const pre = el("pre", "diff full");
-  const lines = String(text).split("
-");
+  const lines = String(text).split("\n");
   if (lines.length && lines[lines.length - 1] === "") lines.pop();
   lines.forEach((line, i) => {
     const row = el("div", "dl ctx");
