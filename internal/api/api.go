@@ -116,6 +116,10 @@ type ReviewFile struct {
 	Op   string `json:"op"`
 	New  bool   `json:"new"`
 	Diff string `json:"diff"`
+	// Full is the complete sanitized content after the change (empty for
+	// deletes and for closed proposals), so the approver can open the
+	// whole modified file and not only the diff hunks.
+	Full string `json:"full,omitempty"`
 }
 
 // ReviewResp is returned by GET /v1/proposals/{id}/review.

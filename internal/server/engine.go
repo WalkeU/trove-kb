@@ -1277,7 +1277,7 @@ func (e *Engine) Review(a auth.Actor, id string) (api.ReviewResp, error) {
 		if err != nil {
 			return api.ReviewResp{}, newErr(KindInternal, "%v", err)
 		}
-		var d string
+		var d, full string
 		switch {
 		case dropped:
 			d = "(content is not retained for closed proposals)\n"
@@ -1285,10 +1285,11 @@ func (e *Engine) Review(a auth.Actor, id string) (api.ReviewResp, error) {
 			d = diff.Unified(old, "", 3)
 		default:
 			d = diff.Unified(old, c.Content, 3)
+			full = safe.Text(c.Content, 0, 0)
 		}
 		resp.Files = append(resp.Files, api.ReviewFile{
 			Path: safe.Line(c.Path, 0), Op: c.Op, New: !existed,
-			Diff: safe.Text(d, 0, 0),
+			Diff: safe.Text(d, 0, 0), Full: full,
 		})
 	}
 	resp.Summary.Topic = safe.Line(resp.Summary.Topic, 0)

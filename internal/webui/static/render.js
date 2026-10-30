@@ -38,8 +38,10 @@ export function appendEscaped(parent, s) {
   let last = 0;
   for (const m of String(s).matchAll(ESCAPED)) {
     if (m.index > last) appendText(parent, s.slice(last, m.index));
-    const mark = el("span", "inv", m[0]);
-    mark.title = "escaped invisible or control character";
+    const bom = m[0] === "\\u{feff}";
+    const mark = el("span", "inv", bom ? "BOM" : m[0]);
+    mark.title = bom ? "UTF-8 byte order mark (U+FEFF), invisible; common in files saved by Windows tools"
+      : "escaped invisible or control character";
     parent.appendChild(mark);
     last = m.index + m[0].length;
   }
