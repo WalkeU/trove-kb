@@ -442,3 +442,16 @@ func (r *Rules) contentWarnings(shown, content string, warnf func(string, ...any
 		warnf("%s: %d more public IP address(es)", shown, ips-maxWarnPerKind)
 	}
 }
+
+// StripBOM removes every U+FEFF (byte order mark, also the deprecated
+// zero width no-break space) from note content. Windows tools write it at
+// the start of a file, and it ends up in the middle when frontmatter is
+// prepended to such a file. It carries no meaning in markdown, only shows
+// up as a stray invisible character, so it is dropped before a proposal
+// is checked and stored.
+func StripBOM(content string) string {
+	if !strings.ContainsRune(content, '\uFEFF') {
+		return content
+	}
+	return strings.ReplaceAll(content, "\uFEFF", "")
+}

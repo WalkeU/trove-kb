@@ -116,10 +116,11 @@ type ReviewFile struct {
 	Op   string `json:"op"`
 	New  bool   `json:"new"`
 	Diff string `json:"diff"`
-	// Full is the complete sanitized content after the change (empty for
-	// deletes and for closed proposals), so the approver can open the
-	// whole modified file and not only the diff hunks.
-	Full string `json:"full,omitempty"`
+	// FullDiff is the complete file after the change with the removed
+	// and added lines marked (every line prefixed with ' ', '-' or '+',
+	// nothing collapsed, sanitized like Diff). Empty for deletes and for
+	// closed proposals. The UI shows it in the "whole file" dialog.
+	FullDiff string `json:"full_diff,omitempty"`
 }
 
 // ReviewResp is returned by GET /v1/proposals/{id}/review.

@@ -371,12 +371,18 @@ export function splitFrontmatter(text) {
   return [m[1].split(/\r?\n/), text.slice(m[0].length)];
 }
 
+const BOM = String.fromCharCode(0xfeff);
+
 // parse turns markdown into blocks:
 // fm {lines}, h {level, c}, p {c}, code {lang, s}, quote {c: blocks},
 // list {ordered, items: [{task, c: inline, sub: blocks}]}, hr,
 // table {head: [inline], rows: [[inline]]}.
 export function parse(text, depth = 0) {
   text = String(text).replace(/\r\n?/g, "\n");
+  // A byte order mark (U+FEFF) carries no meaning in markdown; at the
+  // start it would hide the frontmatter, in the middle it would show up
+  // as a stray mark in a heading. The source view still shows it.
+  if (depth === 0) text = text.split(BOM).join("");
   const blocks = [];
   if (depth === 0) {
     const [fm, rest] = splitFrontmatter(text);

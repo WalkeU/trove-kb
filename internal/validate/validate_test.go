@@ -265,3 +265,15 @@ func TestTopic(t *testing.T) {
 		t.Fatal("topic not truncated")
 	}
 }
+
+func TestStripBOM(t *testing.T) {
+	for in, want := range map[string]string{
+		"plain":                           "plain",
+		"\uFEFF---\ntitle: t\n---\n":      "---\ntitle: t\n---\n",
+		"---\ntitle: t\n---\n\n\uFEFFUSP": "---\ntitle: t\n---\n\nUSP",
+	} {
+		if got := StripBOM(in); got != want {
+			t.Errorf("StripBOM(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

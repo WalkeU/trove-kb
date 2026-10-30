@@ -217,3 +217,20 @@ test("file name filter is a case-insensitive substring match", () => {
   assert.deepEqual(filterPaths(["a/Deploy.md", "b/x.md"], "deploy"), ["a/Deploy.md"]);
   assert.deepEqual(filterPaths(["a", "b"], "  "), ["a", "b"]);
 });
+
+test("a byte order mark gets a spelled-out label and is dropped from rendered markdown", async () => {
+  const { appendText, appendEscaped } = await import("../static/render.js");
+  const bom = String.fromCharCode(0xfeff);
+  const esc = String.fromCharCode(92) + "u{feff}";
+  for (const root of [appendText(new Element("div"), bom + "USPRIV"), appendEscaped(new Element("div"), esc + "USPRIV")]) {
+    const mark = root.childNodes[0];
+    assert.equal(mark.className, "inv bom");
+    assert.equal(mark.textContent, "[hidden BOM character]");
+    assert.equal(root.textContent, "[hidden BOM character]USPRIV");
+  }
+  // Other escapes keep their code point.
+  assert.equal(appendEscaped(new Element("div"), String.fromCharCode(92) + "u{200b}x").textContent, String.fromCharCode(92) + "u{200b}x");
+  const blocks = parse(bom + "---\ntitle: t\n---\n\n" + bom + "USPRIV\n");
+  assert.equal(blocks[0].t, "fm");
+  assert.ok(!JSON.stringify(blocks).includes(bom));
+});
