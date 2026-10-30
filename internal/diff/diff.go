@@ -130,3 +130,16 @@ func Unified(oldText, newText string, context int) string {
 	flush()
 	return b.String()
 }
+
+// Whole renders every line of the new file together with the removed old
+// lines, each prefixed with ' ', '-' or '+': the complete file with its
+// changes marked, nothing collapsed.
+func Whole(oldText, newText string) string {
+	var b strings.Builder
+	for _, op := range Compute(Lines(oldText), Lines(newText)) {
+		b.WriteByte(op.Kind)
+		b.WriteString(op.Text)
+		b.WriteByte('\n')
+	}
+	return b.String()
+}

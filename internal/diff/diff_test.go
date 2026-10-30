@@ -29,3 +29,14 @@ func TestStats(t *testing.T) {
 		t.Fatalf("got -%d +%d", r, a)
 	}
 }
+
+func TestWhole(t *testing.T) {
+	got := Whole("a\nb\nc\nd\ne\nf\ng\n", "a\nB\nc\nd\ne\nf\ng\nh\n")
+	want := " a\n-b\n+B\n c\n d\n e\n f\n g\n+h\n"
+	if got != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
+	}
+	if got := Whole("", "x\n"); got != "+x\n" {
+		t.Fatalf("new file: %q", got)
+	}
+}

@@ -670,11 +670,13 @@ func (e *Engine) WriteChange(a auth.Actor, id string, req api.ChangeReq) (api.Su
 	return e.summary(ctx, p, head, a)
 }
 
-// normalize drops puts identical to the base and sorts the changes.
+// normalize strips byte order marks from put content, drops puts
+// identical to the base and sorts the changes.
 func (e *Engine) normalize(ctx context.Context, base string, changes []store.Change) ([]store.Change, error) {
 	var out []store.Change
 	for _, c := range changes {
 		if c.Op == store.OpPut {
+			c.Content = validate.StripBOM(c.Content)
 			old, ok, err := e.readAt(ctx, base, c.Path)
 			if err != nil {
 				return nil, err
@@ -1285,11 +1287,11 @@ func (e *Engine) Review(a auth.Actor, id string) (api.ReviewResp, error) {
 			d = diff.Unified(old, "", 3)
 		default:
 			d = diff.Unified(old, c.Content, 3)
-			full = safe.Text(c.Content, 0, 0)
+			full = safe.Text(diff.Whole(old, c.Content), 0, 0)
 		}
 		resp.Files = append(resp.Files, api.ReviewFile{
 			Path: safe.Line(c.Path, 0), Op: c.Op, New: !existed,
-			Diff: safe.Text(d, 0, 0), Full: full,
+			Diff: safe.Text(d, 0, 0), FullDiff: full,
 		})
 	}
 	resp.Summary.Topic = safe.Line(resp.Summary.Topic, 0)

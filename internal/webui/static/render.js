@@ -21,6 +21,8 @@ export function appendText(parent, s) {
   for (const part of splitInvisible(s)) {
     if (part.t === "text") {
       parent.appendChild(document.createTextNode(part.s));
+    } else if (part.cp === BOM_CP) {
+      parent.appendChild(bomMark());
     } else {
       const m = document.createElement("span");
       m.className = "inv";
@@ -32,16 +34,32 @@ export function appendText(parent, s) {
   return parent;
 }
 
+// U+FEFF, the byte order mark. Windows editors write it at the start of a
+// file; it ends up in the middle when frontmatter is prepended to such a
+// file. It gets a spelled-out label: a bare "BOM" glued to the next word
+// (for example "BOMUSPRIV") reads like part of the text.
+const BOM_CP = 0xfeff;
+
+export function bomMark() {
+  const m = el("span", "inv bom", "[hidden BOM character]");
+  m.title = "Byte order mark (U+FEFF): an invisible character that some Windows editors put at the start of a file. "
+    + "It has no meaning in a note and is removed when a proposal is submitted.";
+  return m;
+}
+
 // appendEscaped is appendText plus highlighting of the server's own
 // \u{....} escapes (review diffs arrive already escaped).
 export function appendEscaped(parent, s) {
   let last = 0;
   for (const m of String(s).matchAll(ESCAPED)) {
     if (m.index > last) appendText(parent, s.slice(last, m.index));
-    const bom = m[0] === "\\u{feff}";
-    const mark = el("span", "inv", bom ? "BOM" : m[0]);
-    mark.title = bom ? "UTF-8 byte order mark (U+FEFF), invisible; common in files saved by Windows tools"
-      : "escaped invisible or control character";
+    let mark;
+    if (parseInt(m[0].slice(3, -1), 16) === BOM_CP) {
+      mark = bomMark();
+    } else {
+      mark = el("span", "inv", m[0]);
+      mark.title = "escaped invisible or control character";
+    }
     parent.appendChild(mark);
     last = m.index + m[0].length;
   }
