@@ -584,6 +584,31 @@ function renderDiff(text) {
   return pre;
 }
 
+// fullFile offers the whole modified file next to the diff hunks. The
+// lines are built on first open so a long review stays light.
+function fullFile(text) {
+  const d = el("details", "full-file");
+  d.appendChild(el("summary", null, "Open the whole modified file"));
+  d.addEventListener("toggle", () => {
+    if (d.open && d.childElementCount === 1) d.appendChild(renderFull(text));
+  });
+  return d;
+}
+
+function renderFull(text) {
+  const pre = el("pre", "diff full");
+  const lines = String(text).split("
+");
+  if (lines.length && lines[lines.length - 1] === "") lines.pop();
+  lines.forEach((line, i) => {
+    const row = el("div", "dl ctx");
+    row.appendChild(el("span", "ln", String(i + 1)));
+    appendEscaped(row, line === "" ? " " : line);
+    pre.appendChild(row);
+  });
+  return pre;
+}
+
 async function showReview(seq, id) {
   const rv = await api("GET", "proposals/" + encodeURIComponent(id) + "/review");
   if (seq !== state.seq) return;
@@ -641,6 +666,7 @@ function renderReview(rv, seq) {
     appendText(t, " " + f.path);
     sec.appendChild(t);
     sec.appendChild(renderDiff(f.diff));
+    if (f.full) sec.appendChild(fullFile(f.full));
     wrap.appendChild(sec);
   }
 
