@@ -496,3 +496,9 @@ ul.flat { list-style: none; padding-left: 0; }
 .account h1 { margin-bottom: 0; }
 .account-field { display: flex; flex-direction: column; gap: 6px; width: 100%; }
 .account-field input { padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+
+.full-file { margin: 8px 0 0; }
+
+.full-file summary { cursor: pointer; font-size: 14px; margin: 6px 0; }
+
+.diff.full .ln { display: inline-block; min-width: 3.5em; padding-right: 10px; color: var(--hunk); text-align: right; user-select: none; }
