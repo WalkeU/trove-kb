@@ -602,3 +602,31 @@ func hasWarning(list []string, sub string) bool {
 	}
 	return false
 }
+
+// A byte order mark is stripped at submit (also one in the middle, left
+// over from prepending frontmatter), and the review carries the whole
+// file with the changes marked.
+func TestSubmitStripsBOMAndReviewFullDiff(t *testing.T) {
+	ev := newEnv(t, nil, defaultFiles())
+	s := ev.propose(agent1, "bom",
+		put("notes/alpha.md", "\uFEFF"+md("alpha", "\uFEFFAlpha note, changed.")))
+	rv, err := ev.e.Review(owner, s.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := rv.Files[0]
+	if strings.Contains(f.Diff, "feff") || strings.Contains(f.FullDiff, "feff") {
+		t.Fatalf("BOM not stripped:\n%s", f.FullDiff)
+	}
+	for _, want := range []string{" ---\n title: alpha\n", "-Alpha note.\n", "+Alpha note, changed.\n"} {
+		if !strings.Contains(f.FullDiff, want) {
+			t.Fatalf("full diff misses %q:\n%s", want, f.FullDiff)
+		}
+	}
+	if _, err := ev.e.Approve(owner, s.ID, s.Digest); err != nil {
+		t.Fatal(err)
+	}
+	if c, _ := ev.readHead("notes/alpha.md"); strings.ContainsRune(c, '\uFEFF') {
+		t.Fatalf("committed content still has a BOM: %q", c)
+	}
+}

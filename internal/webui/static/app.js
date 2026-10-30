@@ -48,6 +48,7 @@ function lock(message) {
   state.fileSet = new Set();
   state.shown = null;
   state.seq++;
+  closeFullDiff();
   $("view").replaceChildren();
   $("tree").replaceChildren();
   $("app").hidden = true;
@@ -239,6 +240,7 @@ function fmtTime(s) {
 }
 
 function setView(...nodes) {
+  closeFullDiff();
   $("view").replaceChildren(...nodes);
   $("view").scrollTop = 0;
   window.scrollTo(0, 0);
@@ -584,28 +586,134 @@ function renderDiff(text) {
   return pre;
 }
 
-// fullFile offers the whole modified file next to the diff hunks. The
-// lines are built on first open so a long review stays light.
-function fullFile(text) {
-  const d = el("details", "full-file");
-  d.appendChild(el("summary", null, "Open the whole modified file"));
-  d.addEventListener("toggle", () => {
-    if (d.open && d.childElementCount === 1) d.appendChild(renderFull(text));
-  });
-  return d;
+// ---- whole file dialog ----
+//
+// The server sends every line of the changed file with its diff marker
+// (full_diff: " " unchanged, "-" removed, "+" added, nothing collapsed).
+// The dialog shows it with old and new line numbers and the changes
+// highlighted. It is a native modal <dialog>: the browser keeps focus
+// inside and makes the page behind it inert. Esc, the Close button and a
+// click on the backdrop close it; focus then returns to the opener.
+
+let fullDialog = null;
+
+function closeFullDiff() {
+  if (fullDialog && fullDialog.open) fullDialog.close();
 }
 
-function renderFull(text) {
-  const pre = el("pre", "diff full");
+function fullFileButton(path, text) {
+  const b = el("button", "btn small full-open", "View the whole file with changes");
+  b.type = "button";
+  b.setAttribute("aria-haspopup", "dialog");
+  b.addEventListener("click", () => openFullDiff(path, text, b));
+  return b;
+}
+
+function openFullDiff(path, text, opener) {
+  closeFullDiff();
   const lines = String(text).split("\n");
   if (lines.length && lines[lines.length - 1] === "") lines.pop();
-  lines.forEach((line, i) => {
-    const row = el("div", "dl ctx");
-    row.appendChild(el("span", "ln", String(i + 1)));
-    appendEscaped(row, line === "" ? " " : line);
+
+  const pre = el("pre", "diff full");
+  const changes = [];
+  let oldNo = 0;
+  let newNo = 0;
+  let added = 0;
+  let removed = 0;
+  let prevKind = "";
+  for (const line of lines) {
+    const mark = line[0] === "+" || line[0] === "-" ? line[0] : " ";
+    const kind = mark === "+" ? "add" : mark === "-" ? "del" : "ctx";
+    const row = el("div", "dl " + kind);
+    if (kind !== "add") oldNo++;
+    if (kind !== "del") newNo++;
+    if (kind === "add") added++;
+    if (kind === "del") removed++;
+    row.appendChild(el("span", "ln", kind === "add" ? "" : String(oldNo)));
+    row.appendChild(el("span", "ln", kind === "del" ? "" : String(newNo)));
+    row.appendChild(el("span", "mk", mark));
+    const body = line.slice(1);
+    row.appendChild(appendEscaped(el("span", "tx"), body === "" ? " " : body));
+    // The first row of each run of changed lines is a "change" stop.
+    if (kind !== "ctx" && (prevKind === "ctx" || prevKind === "")) changes.push(row);
+    prevKind = kind;
     pre.appendChild(row);
+  }
+
+  const dlg = el("dialog", "modal");
+  dlg.setAttribute("aria-modal", "true");
+  dlg.setAttribute("aria-labelledby", "full-title");
+  dlg.setAttribute("aria-describedby", "full-summary");
+  const box = el("div", "modal-box");
+
+  const head = el("div", "modal-head");
+  const title = el("h2", "modal-title");
+  title.id = "full-title";
+  appendText(title, "Whole file: " + path);
+  head.appendChild(title);
+  const close = el("button", "btn small", "Close");
+  close.type = "button";
+  close.setAttribute("aria-label", "Close the whole file view");
+  close.addEventListener("click", () => dlg.close());
+  head.appendChild(close);
+  box.appendChild(head);
+
+  const bar = el("div", "modal-bar");
+  const summary = el("p", "modal-summary");
+  summary.id = "full-summary";
+  summary.appendChild(el("span", "legend add", "+" + added + " added"));
+  summary.appendChild(el("span", "legend del", "-" + removed + " removed"));
+  appendText(summary, newNo + " line(s) in the new version, unchanged lines are not highlighted.");
+  bar.appendChild(summary);
+  let at = -1;
+  const step = (dir) => {
+    if (!changes.length) return;
+    at = (at + dir + changes.length) % changes.length;
+    changes[at].scrollIntoView({ block: "center" });
+    pos.textContent = "change " + (at + 1) + " of " + changes.length;
+  };
+  const prev = el("button", "btn small", "Previous change");
+  prev.type = "button";
+  prev.addEventListener("click", () => step(-1));
+  const next = el("button", "btn small", "Next change");
+  next.type = "button";
+  next.addEventListener("click", () => step(1));
+  const pos = el("span", "modal-pos", changes.length ? changes.length + " change(s)" : "no changes");
+  pos.setAttribute("role", "status");
+  prev.disabled = next.disabled = changes.length === 0;
+  bar.appendChild(prev);
+  bar.appendChild(next);
+  bar.appendChild(pos);
+  box.appendChild(bar);
+
+  const scroller = el("div", "modal-body");
+  scroller.tabIndex = 0;
+  scroller.setAttribute("aria-label", "File content with changes");
+  scroller.appendChild(pre);
+  box.appendChild(scroller);
+  dlg.appendChild(box);
+
+  // The dialog element covers the whole backdrop; the box inside it holds
+  // the content, so a click whose target is the dialog itself landed on
+  // the backdrop. Pressing inside and releasing outside does not close it.
+  let downOnBackdrop = false;
+  dlg.addEventListener("mousedown", (event) => { downOnBackdrop = event.target === dlg; });
+  dlg.addEventListener("click", (event) => {
+    if (event.target === dlg && downOnBackdrop) dlg.close();
+    downOnBackdrop = false;
   });
-  return pre;
+  dlg.addEventListener("close", () => {
+    document.documentElement.classList.remove("modal-open");
+    dlg.remove();
+    if (fullDialog === dlg) fullDialog = null;
+    if (opener && opener.isConnected) opener.focus();
+  });
+
+  document.body.appendChild(dlg);
+  fullDialog = dlg;
+  document.documentElement.classList.add("modal-open");
+  dlg.showModal();
+  close.focus();
 }
 
 async function showReview(seq, id) {
@@ -665,7 +773,7 @@ function renderReview(rv, seq) {
     appendText(t, " " + f.path);
     sec.appendChild(t);
     sec.appendChild(renderDiff(f.diff));
-    if (f.full) sec.appendChild(fullFile(f.full));
+    if (f.full_diff) sec.appendChild(fullFileButton(f.path, f.full_diff));
     wrap.appendChild(sec);
   }
 
