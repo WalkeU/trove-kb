@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -18,8 +20,8 @@ func TestNoApprovalTools(t *testing.T) {
 			}
 		}
 	}
-	if len(tools) != 10 {
-		t.Fatalf("expected the 10 planned tools, got %d", len(tools))
+	if len(tools) != 12 {
+		t.Fatalf("expected the 12 planned tools, got %d", len(tools))
 	}
 }
 
@@ -51,5 +53,51 @@ func TestProtocolBasics(t *testing.T) {
 	r.Error = nil
 	if err := json.Unmarshal([]byte(lines[2]), &r); err != nil || r.Error == nil || r.Error.Code != -32601 {
 		t.Fatalf("unknown method must be -32601: %s", lines[2])
+	}
+}
+
+func TestProposalTools(t *testing.T) {
+	var queries []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		queries = append(queries, r.URL.Path+"?"+r.URL.RawQuery)
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/v1/proposals" {
+			w.Write([]byte(`[{"id":"abc","state":"pending","agent":"other","topic":"t","files":[]}]`))
+			return
+		}
+		w.Write([]byte(`{"id":"abc","state":"pending","agent":"other","topic":"t","files":[],"changes":[{"path":"a.md","op":"put","content":"x"}]}`))
+	}))
+	defer srv.Close()
+	c := client.New(srv.URL, "x")
+
+	var names []string
+	for _, tl := range tools {
+		names = append(names, tl.Name)
+	}
+	for _, want := range []string{"trove_proposals", "trove_proposal", "trove_list"} {
+		if !strings.Contains(strings.Join(names, " "), want) {
+			t.Fatalf("tool %s missing", want)
+		}
+	}
+
+	out, err := callTool(c, "trove_proposals", json.RawMessage(`{"state":"all","all_agents":true}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(out, client.ProposalNotice+"\n\n[") || !strings.Contains(out, `"agent": "other"`) {
+		t.Fatalf("output must start with the notice then the JSON: %s", out)
+	}
+	if _, err := callTool(c, "trove_proposals", nil); err != nil {
+		t.Fatal(err)
+	}
+	out, err = callTool(c, "trove_proposal", json.RawMessage(`{"id":"abc"}`))
+	if err != nil || !strings.HasPrefix(out, client.ProposalNotice+"\n\n{") || !strings.Contains(out, "a.md") {
+		t.Fatalf("detail output: %v %s", err, out)
+	}
+	if len(queries) != 3 || !strings.Contains(queries[0], "agents=all") || !strings.Contains(queries[0], "state=all") {
+		t.Fatalf("all_agents must send agents=all: %v", queries)
+	}
+	if strings.Contains(queries[1], "agents=") {
+		t.Fatalf("default list must not send agents: %v", queries)
 	}
 }
