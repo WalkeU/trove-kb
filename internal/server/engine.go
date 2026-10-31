@@ -404,6 +404,12 @@ func (e *Engine) summary(ctx context.Context, p *store.Proposal, head string, vi
 		CreatedAt: p.CreatedAt, SubmittedAt: p.SubmittedAt, AppliedCommit: p.AppliedCommit,
 		DecidedBy: p.DecidedBy, Reason: p.Reason, Files: []api.FileChange{},
 	}
+	// A rebased proposal points to its successor draft; another agent's
+	// draft id is not shown to other agents (drafts stay hidden).
+	if t, ok := e.props[p.SupersededBy]; ok && viewer.Role == auth.RoleAgent &&
+		t.Agent != viewer.Name && t.State == store.StateDraft {
+		s.SupersededBy = ""
+	}
 	for _, c := range p.Changes {
 		n := len(c.Content)
 		if p.ContentDropped {
@@ -481,6 +487,24 @@ func (e *Engine) visible(a auth.Actor, id string) (*store.Proposal, error) {
 		}
 	}
 	return nil, newErr(KindNotFound, "proposal not found")
+}
+
+// readable returns the proposal if the viewer may read it (Get only).
+// Agents may read every proposal that has left the draft state, their
+// own in any state. A foreign draft is reported as not found so its
+// existence does not leak. Unlike visible, this must never guard writes
+// or ReadFile, which stay own-only.
+func (e *Engine) readable(a auth.Actor, id string) (*store.Proposal, error) {
+	p, err := e.visible(a, id)
+	if err == nil {
+		return p, nil
+	}
+	if a.Role == auth.RoleAgent {
+		if p, ok := e.props[id]; ok && store.ValidID(id) && p.State != store.StateDraft {
+			return p, nil
+		}
+	}
+	return nil, err
 }
 
 func (e *Engine) save(p *store.Proposal) error {
@@ -1170,8 +1194,10 @@ func (e *Engine) Reject(a auth.Actor, id, reason string) (api.Summary, error) {
 }
 
 // List returns the proposals visible to a. filter: "" = open ones,
-// "all" = every state, otherwise one state.
-func (e *Engine) List(a auth.Actor, filter string) ([]api.Summary, error) {
+// "all" = every state, otherwise one state. An agent sees its own
+// proposals; with allAgents it also sees other agents' proposals, but
+// never their drafts.
+func (e *Engine) List(a auth.Actor, filter string, allAgents bool) ([]api.Summary, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if a.Role == auth.RoleReader {
@@ -1186,7 +1212,9 @@ func (e *Engine) List(a auth.Actor, filter string) ([]api.Summary, error) {
 	var list []*store.Proposal
 	for _, p := range e.props {
 		if a.Role == auth.RoleAgent && p.Agent != a.Name {
-			continue
+			if !allAgents || p.State == store.StateDraft {
+				continue
+			}
 		}
 		switch filter {
 		case "":
@@ -1217,7 +1245,7 @@ func (e *Engine) List(a auth.Actor, filter string) ([]api.Summary, error) {
 func (e *Engine) Get(a auth.Actor, id string) (api.Detail, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	p, err := e.visible(a, id)
+	p, err := e.readable(a, id)
 	if err != nil {
 		return api.Detail{}, err
 	}
@@ -1316,7 +1344,7 @@ func (e *Engine) Status(a auth.Actor) (api.StatusResp, error) {
 	}
 	e.mu.Unlock()
 	if a.Role != auth.RoleReader {
-		list, err := e.List(a, "")
+		list, err := e.List(a, "", false)
 		if err != nil {
 			return st, err
 		}

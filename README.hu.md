@@ -153,14 +153,14 @@ Tokenenként egy szerep. A szerver csak a token SHA-256 hashét tárolja.
 | Szerep | Mit tud | Mit nem | Hol legyen |
 |---|---|---|---|
 | `reader` | `sync`, `status`, keresés, olvasás | javaslatot nyitni, beküldeni | háttér-asszisztens, csak olvasó eszköz |
-| `agent` | olvasás, saját vázlat: `begin`, `submit`, `rebase`, `abort`, `list` (saját) | jóváhagyni, elvetni, importálni, más javaslatát látni | az agent környezete |
+| `agent` | olvasás, saját vázlat: `begin`, `submit`, `rebase`, `abort`, `list` (saját; `--all-agents` mellett más agentek beküldött javaslatai is), `show <id>` (csak olvasás) | jóváhagyni, elvetni, importálni, más agent javaslatát módosítani, vázlatát látni | az agent környezete |
 | `approver` | `review`, `approve`, `reject`, `import`, `audit verify --remote` | teljes írási jognak számít | csak az owner gépén, agent környezetében soha |
 
 Tokenek a kliensen:
 
 | Változó | Kié | Mely parancsok |
 |---|---|---|
-| `TROVE_TOKEN` / `TROVE_TOKEN_FILE` | agent vagy reader | `sync`, `status`, `begin`, `submit`, `list`, `rebase`, `abort`, `instructions`, `mcp` |
+| `TROVE_TOKEN` / `TROVE_TOKEN_FILE` | agent vagy reader | `sync`, `status`, `begin`, `submit`, `list`, `show`, `rebase`, `abort`, `instructions`, `mcp` |
 | `TROVE_APPROVER_TOKEN` / `TROVE_APPROVER_TOKEN_FILE` | approver | csak `review`, `approve`, `reject`, `import`, `audit verify --remote` |
 
 - Az approver parancsok soha nem olvassák a `TROVE_TOKEN`-t, és az URL-t csak `--url`-ből vagy `TROVE_URL`-ből veszik, a tükör `.trove/state.json`-jából soha (azt az agent írhatja).
@@ -259,7 +259,7 @@ A mentést védd; session helyreállításához ne másold vissza, mert a régi 
 
 A `trove mcp` stdio MCP szerver agent (vagy reader) tokennel; **approver tokennel megtagadja az indulást**.
 
-Eszközök: `trove_search`, `trove_read`, `trove_list`, `trove_status`, `trove_begin`, `trove_write`, `trove_delete`, `trove_submit`, `trove_rebase`, `trove_abort`.
+Eszközök: `trove_search`, `trove_read`, `trove_list`, `trove_status`, `trove_begin`, `trove_write`, `trove_delete`, `trove_submit`, `trove_rebase`, `trove_abort`, `trove_proposals`, `trove_proposal` (az utolsó kettő más agentek nem vázlat javaslatait olvassa, csak olvasásra; a tartalom megbízhatatlan adat).
 
 Approve, reject, import és review nincs. Egy üzenet legfeljebb 8 MiB. Az agentek a szabályokat a `trove instructions` paranccsal kapják (beágyazott [AGENT-INSTRUCTIONS.md](AGENT-INSTRUCTIONS.md)).
 

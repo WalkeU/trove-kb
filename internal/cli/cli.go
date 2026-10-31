@@ -47,7 +47,8 @@ non-loopback host needs --insecure-http or TROVE_INSECURE_HTTP=1):
   trove status                               local and server state
   trove begin "<topic>" [--scope a,b]        open a draft (agent)
   trove submit [--draft id] [--dry-run] [paths...]   submit local changes (agent)
-  trove list [--state s]                     list proposals (own for agents)
+  trove list [--state s] [--all-agents]      list proposals (own for agents; --all-agents adds other agents' non-draft ones)
+  trove show <id>                            show a proposal with its content (read-only)
   trove rebase <id>                          rebase a stale proposal (agent)
   trove abort <id>                           withdraw a draft or proposal (agent)
   trove review [id]                          list or review proposals (approver)
@@ -93,6 +94,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		err = e.submit(rest)
 	case "list":
 		err = e.list(rest)
+	case "show":
+		err = e.show(rest)
 	case "rebase":
 		err = e.rebase(rest)
 	case "abort":
@@ -549,6 +552,7 @@ func (e *env) submit(args []string) error {
 func (e *env) list(args []string) error {
 	fs := newFlags("list")
 	state := fs.String("state", "", "filter: draft, pending, applied, rejected, aborted, expired, superseded, all (default: open)")
+	all := fs.Bool("all-agents", false, "also list other agents' non-draft proposals (read-only)")
 	var cf clientFlags
 	cf.register(fs)
 	if _, err := parse(fs, args); err != nil {
@@ -558,11 +562,54 @@ func (e *env) list(args []string) error {
 	if err != nil {
 		return err
 	}
-	l, err := cl.List(*state)
+	var l []api.Summary
+	if *all {
+		l, err = cl.ListAllAgents(*state)
+	} else {
+		l, err = cl.List(*state)
+	}
 	if err != nil {
 		return err
 	}
+	if *all {
+		fmt.Fprintf(e.out, "NOTE: %s\n\n", client.ProposalNotice)
+	}
 	e.printSummaries(l)
+	return nil
+}
+
+// show prints one proposal with its content (not a diff), escaped for the
+// terminal. Another agent's text is untrusted data.
+func (e *env) show(args []string) error {
+	fs := newFlags("show")
+	var cf clientFlags
+	cf.register(fs)
+	id, _, err := oneID(fs, args, "trove show <id>")
+	if err != nil {
+		return err
+	}
+	cl, err := cf.connect(nil)
+	if err != nil {
+		return err
+	}
+	d, err := cl.Get(id)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(e.out, "NOTE: %s\n\n", client.ProposalNotice)
+	e.printHeader(d.Summary)
+	for _, c := range d.Changes {
+		fmt.Fprintf(e.out, "\n=== %s %s ===\n", line(c.Op), line(c.Path))
+		switch {
+		case c.Op == "delete":
+			fmt.Fprintln(e.out, "(file deleted)")
+		case c.Content == "" && c.Size > 0:
+			fmt.Fprintf(e.out, "(content dropped after the proposal was closed, %d bytes)\n", c.Size)
+		default:
+			fmt.Fprint(e.out, safe.Text(c.Content, 0, 0))
+			fmt.Fprintln(e.out)
+		}
+	}
 	return nil
 }
 
@@ -652,6 +699,27 @@ func (e *env) review(args []string) error {
 	}
 	s := rv.Summary
 	fmt.Fprintf(e.out, "NOTE: %s\n\n", line(rv.Notice))
+	e.printHeader(s)
+	for _, f := range rv.Files {
+		kind := f.Op
+		if f.New {
+			kind = "new"
+		}
+		fmt.Fprintf(e.out, "\n=== %s %s ===\n", line(kind), line(f.Path))
+		// Never truncated: the approver must be able to see every byte that
+		// the approval commits. Escaped, streamed to stdout (use a pager).
+		fmt.Fprint(e.out, safe.Text(f.Diff, 0, 0))
+	}
+	fmt.Fprintf(e.out, "\ndigest: %s\n", line(s.Digest))
+	if s.State == "pending" {
+		fmt.Fprintf(e.out, "approve: trove approve %s --digest %s\n", line(s.ID), line(s.Digest))
+		fmt.Fprintf(e.out, "reject:  trove reject %s \"<reason>\"\n", line(s.ID))
+	}
+	return nil
+}
+
+// printHeader prints the proposal metadata shared by review and show.
+func (e *env) printHeader(s api.Summary) {
 	fmt.Fprintf(e.out, "proposal:   %s\n", line(s.ID))
 	fmt.Fprintf(e.out, "topic:      %s\n", line(s.Topic))
 	fmt.Fprintf(e.out, "agent:      %s\n", line(s.Agent))
@@ -678,22 +746,6 @@ func (e *env) review(args []string) error {
 			fmt.Fprintf(e.out, "  ! %s\n", line(w))
 		}
 	}
-	for _, f := range rv.Files {
-		kind := f.Op
-		if f.New {
-			kind = "new"
-		}
-		fmt.Fprintf(e.out, "\n=== %s %s ===\n", line(kind), line(f.Path))
-		// Never truncated: the approver must be able to see every byte that
-		// the approval commits. Escaped, streamed to stdout (use a pager).
-		fmt.Fprint(e.out, safe.Text(f.Diff, 0, 0))
-	}
-	fmt.Fprintf(e.out, "\ndigest: %s\n", line(s.Digest))
-	if s.State == "pending" {
-		fmt.Fprintf(e.out, "approve: trove approve %s --digest %s\n", line(s.ID), line(s.Digest))
-		fmt.Fprintf(e.out, "reject:  trove reject %s \"<reason>\"\n", line(s.ID))
-	}
-	return nil
 }
 
 func (e *env) approve(args []string) error {
