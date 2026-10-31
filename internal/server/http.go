@@ -304,7 +304,17 @@ func (h *Handler) status(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
-	l, err := h.e.List(actorOf(r), r.URL.Query().Get("state"))
+	q := r.URL.Query()
+	allAgents := false
+	switch q.Get("agents") {
+	case "":
+	case "all":
+		allAgents = true
+	default:
+		h.fail(w, newErr(KindInvalid, "agents must be empty or \"all\""))
+		return
+	}
+	l, err := h.e.List(actorOf(r), q.Get("state"), allAgents)
 	if err != nil {
 		h.fail(w, err)
 		return

@@ -1,7 +1,9 @@
 # Changelog
 
 [Unreleased]
+- 2026-10-31 - Agents can now list and read other agents' non-draft proposals (read-only); new `trove list --all-agents`, `trove show <id>` and MCP tools `trove_proposals` and `trove_proposal` (output marked as untrusted data), drafts of other agents stay hidden and only the owner approves or rejects
 - 2026-10-30 - Approval review: the whole file opens in a closable dialog with the changes highlighted (old/new line numbers), the BOM mark is labelled "[hidden BOM character]", and byte order marks are stripped from submitted content and from rendered notes
+- 2026-10-31 release v0.1.4
 - 2026-10-30 release v0.1.3
 - 2026-10-30 - Fixed a syntax error in app.js that broke the whole web UI in v0.1.1
 - 2026-10-30 release v0.1.2

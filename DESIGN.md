@@ -43,10 +43,10 @@ Short technical design. The requirements live in the project plan; this file rec
 | `GET /tree`, `GET /file?path=`, `GET /search?q=`, `GET /instructions` | all | read |
 | `GET /status` | all | head, counts, visible proposals |
 | `POST /proposals` | agent | begin (draft) |
-| `POST /proposals/{id}/changes` | agent (own draft) | server-side write/delete (MCP) |
+| `POST /proposals/{id}/changes` | agent (own draft) | server-side write/delete (MCP); `GET /file?draft=id` is own-draft only |
 | `POST /proposals/{id}/submit` | agent (own) | freeze, validate, digest |
 | `POST /proposals/{id}/abort`, `POST /proposals/{id}/rebase` | agent (own) | |
-| `GET /proposals`, `GET /proposals/{id}` | agent (own), approver (all) | |
+| `GET /proposals`, `GET /proposals/{id}` | agent (own, plus other agents' non-draft with `?agents=all` on the list), approver (all) | read-only; other agents' drafts are "not found"; any other `agents` value is 400; reads are not audited |
 | `GET /proposals/{id}/review` | approver | diff, warnings, digest |
 | `POST /proposals/{id}/approve` (`digest` required), `/reject` | approver | |
 | `POST /import?mode=tar|bundle` | approver | one-time bootstrap, only into an empty repo |

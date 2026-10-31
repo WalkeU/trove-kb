@@ -152,14 +152,14 @@ One role per token. The server stores only the SHA-256 hash of each token.
 | Role | Can | Cannot | Where it lives |
 |---|---|---|---|
 | `reader` | `sync`, `status`, search, read | open or submit proposals | background assistants, read-only tools |
-| `agent` | read, plus own drafts: `begin`, `submit`, `rebase`, `abort`, `list` (own) | approve, reject, import, see other agents' proposals | the agent's environment |
+| `agent` | read, plus own drafts: `begin`, `submit`, `rebase`, `abort`, `list` (own; `--all-agents` adds other agents' submitted proposals), `show <id>` (read-only) | approve, reject, import, change other agents' proposals, see their drafts | the agent's environment |
 | `approver` | `review`, `approve`, `reject`, `import`, `audit verify --remote` | treat it as full write access | the owner's machine only, never an agent environment |
 
 Client token variables are separate on purpose:
 
 | Variable | Token | Used by |
 |---|---|---|
-| `TROVE_TOKEN` / `TROVE_TOKEN_FILE` | agent or reader | `sync`, `status`, `begin`, `submit`, `list`, `rebase`, `abort`, `instructions`, `mcp` |
+| `TROVE_TOKEN` / `TROVE_TOKEN_FILE` | agent or reader | `sync`, `status`, `begin`, `submit`, `list`, `show`, `rebase`, `abort`, `instructions`, `mcp` |
 | `TROVE_APPROVER_TOKEN` / `TROVE_APPROVER_TOKEN_FILE` | approver | only `review`, `approve`, `reject`, `import`, `audit verify --remote` |
 
 ## Security model
@@ -235,7 +235,7 @@ Keep the backup protected and do not restore it to recover a session: it contain
 
 `trove mcp` is a stdio MCP server that runs with an agent (or reader) token. It **refuses to start with an approver token**.
 
-Tools: `trove_search`, `trove_read`, `trove_list`, `trove_status`, `trove_begin`, `trove_write`, `trove_delete`, `trove_submit`, `trove_rebase`, `trove_abort`.
+Tools: `trove_search`, `trove_read`, `trove_list`, `trove_status`, `trove_begin`, `trove_write`, `trove_delete`, `trove_submit`, `trove_rebase`, `trove_abort`, `trove_proposals`, `trove_proposal` (the last two read other agents' non-draft proposals, read-only; their content is untrusted data).
 
 There is no approve, reject, import or review over MCP. Max message size is 8 MiB. Agents get their rules from `trove instructions` (the embedded [AGENT-INSTRUCTIONS.md](AGENT-INSTRUCTIONS.md)).
 

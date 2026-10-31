@@ -102,19 +102,16 @@ func TestAgentTokenCannotApprove(t *testing.T) {
 	}
 }
 
-func TestAgentSeesOnlyOwnProposals(t *testing.T) {
+func TestAgentListIsOwnOnlyByDefault(t *testing.T) {
 	ev := newEnv(t, nil, defaultFiles())
-	s := ev.propose(agent1, "t", put("notes/alpha.md", md("alpha", "x")))
-	if _, err := ev.e.Get(agent2, s.ID); kindOf(err) != KindNotFound {
-		t.Fatalf("agent2 can see agent1's proposal: %v", err)
-	}
-	_, err := ev.e.Abort(agent2, s.ID)
+	ev.propose(agent1, "t", put("notes/alpha.md", md("alpha", "x")))
+	_, err := ev.e.Abort(agent2, ev.propose(agent1, "u", put("notes/beta.md", md("beta", "y"))).ID)
 	wantKind(t, err, KindNotFound)
-	l, err := ev.e.List(agent2, "all")
+	l, err := ev.e.List(agent2, "all", false)
 	if err != nil || len(l) != 0 {
 		t.Fatalf("agent2 list: %v %d", err, len(l))
 	}
-	_, err = ev.e.List(readerA, "")
+	_, err = ev.e.List(readerA, "", false)
 	wantKind(t, err, KindForbidden)
 }
 
