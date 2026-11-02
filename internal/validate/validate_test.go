@@ -323,3 +323,18 @@ func TestAllowedExtensionsInvalid(t *testing.T) {
 		}
 	}
 }
+
+func TestAllowedDirsMustBeTopLevel(t *testing.T) {
+	for _, d := range []string{"a/b", "infra/sub"} {
+		cfg := config.Default()
+		cfg.Validation.AllowedDirs = []string{"infra", d}
+		if _, err := New(cfg.Validation, cfg.Limits); err == nil {
+			t.Errorf("allowed_dirs %q must be rejected", d)
+		}
+	}
+	cfg := config.Default()
+	cfg.Validation.AllowedDirs = []string{"infra", "my dir"}
+	if _, err := New(cfg.Validation, cfg.Limits); err != nil {
+		t.Errorf("a name with a space is a valid single folder: %v", err)
+	}
+}

@@ -46,6 +46,9 @@ func New(v config.Validation, l config.Limits) (*Rules, error) {
 	}
 	for _, d := range v.AllowedDirs {
 		d = strings.Trim(d, "/")
+		if strings.Contains(d, "/") {
+			return nil, fmt.Errorf("allowed_dirs %q: must be one top-level folder name, without \"/\"", d)
+		}
 		if err := CheckPathSyntax(d); err != nil {
 			return nil, fmt.Errorf("allowed_dirs %q: %w", d, err)
 		}

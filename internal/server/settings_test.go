@@ -84,6 +84,7 @@ func TestSettingsUpdate(t *testing.T) {
 		{AllowedDirs: []string{"notes"}, AllowedExtensions: []string{"YML"}},
 		{AllowedDirs: []string{"../etc"}, AllowedExtensions: []string{".md"}},
 		{AllowedDirs: []string{".git"}, AllowedExtensions: []string{".md"}},
+		{AllowedDirs: []string{"a/b"}, AllowedExtensions: []string{".md"}},
 	} {
 		_, err := ev.e.UpdateSettings(owner, bad, false)
 		wantKind(t, err, KindInvalid)

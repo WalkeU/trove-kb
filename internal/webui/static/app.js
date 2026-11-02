@@ -466,8 +466,13 @@ async function showSettings(seq) {
     finally { save.disabled = false; }
   };
   save.addEventListener("click", async () => {
-    save.disabled = true;
     message.replaceChildren();
+    const n = Number(max.value);
+    if (max.value.trim() === "" || !Number.isInteger(n) || n < 1 || n > 500) {
+      message.appendChild(errorBox(new Error("Max files per proposal must be a whole number from 1 to 500.")));
+      return;
+    }
+    save.disabled = true;
     try {
       const check = await api("PUT", "settings?dry_run=1", body());
       if (!check.warnings || check.warnings.length === 0) { save.disabled = false; await doSave(); return; }
