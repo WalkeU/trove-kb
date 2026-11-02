@@ -90,6 +90,8 @@ func NewHandler(e *Engine, keys *auth.Keyring, logger *log.Logger) *Handler {
 	m.HandleFunc("POST /v1/proposals/{id}/reject", h.reject)
 	m.HandleFunc("POST /v1/import", h.importKB)
 	m.HandleFunc("GET /v1/audit/verify", h.verify)
+	m.HandleFunc("GET /v1/settings", h.settingsGet)
+	m.HandleFunc("PUT /v1/settings", h.settingsPut)
 	return h
 }
 
@@ -143,9 +145,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// Once the owner has migrated to browser password authentication,
 		// a raw approver token cannot bypass the UI decision path.
 		if actor.Role == auth.RoleApprover && (h.browserErr != nil || h.browserConfigured()) &&
-			strings.HasPrefix(r.URL.Path, "/v1/proposals/") &&
-			(strings.HasSuffix(r.URL.Path, "/approve") || strings.HasSuffix(r.URL.Path, "/reject")) {
-			writeErr(w, http.StatusForbidden, "use the owner browser session to approve or reject", nil)
+			((strings.HasPrefix(r.URL.Path, "/v1/proposals/") &&
+				(strings.HasSuffix(r.URL.Path, "/approve") || strings.HasSuffix(r.URL.Path, "/reject"))) ||
+				(r.Method == http.MethodPut && r.URL.Path == "/v1/settings")) {
+			writeErr(w, http.StatusForbidden, "use the owner browser session to approve, reject or change settings", nil)
 			return
 		}
 	} else {
@@ -436,6 +439,23 @@ func (h *Handler) reject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, s)
+}
+
+func (h *Handler) settingsGet(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, h.e.Settings())
+}
+
+func (h *Handler) settingsPut(w http.ResponseWriter, r *http.Request) {
+	var req api.Settings
+	if !h.decode(w, r, smallBody, &req) {
+		return
+	}
+	res, err := h.e.UpdateSettings(actorOf(r), req, r.URL.Query().Get("dry_run") == "1")
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
 }
 
 func (h *Handler) importKB(w http.ResponseWriter, r *http.Request) {

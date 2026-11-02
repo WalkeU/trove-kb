@@ -42,6 +42,11 @@ type Validation struct {
 	AllowedDirs []string `json:"allowed_dirs"`
 	// AllowRootFiles allows files directly in the repository root.
 	AllowRootFiles bool `json:"allow_root_files"`
+	// AllowedExtensions lists the file extensions a proposal may touch
+	// (lowercase, with the leading dot, e.g. ".md", ".yml"). The default is
+	// only ".md". Frontmatter is required for ".md" files only; every file
+	// type goes through the same secret and content scanning.
+	AllowedExtensions []string `json:"allowed_extensions"`
 	// FrontmatterFields must be present and non-empty in every put file.
 	FrontmatterFields []string `json:"frontmatter_fields"`
 	// FrontmatterExempt lists exact paths that need no frontmatter (e.g. INDEX.md).
@@ -101,6 +106,7 @@ func Default() Config {
 		Validation: Validation{
 			AllowedDirs:       []string{"infra", "projects", "apps", "claude", "snippets", "runbooks", "decisions"},
 			AllowRootFiles:    true,
+			AllowedExtensions: []string{".md"},
 			FrontmatterFields: []string{"title", "updated", "status"},
 			FrontmatterExempt: []string{"INDEX.md", "README.md"},
 		},
@@ -219,6 +225,9 @@ func (c Config) Validate() error {
 	}
 	if len(c.Validation.AllowedDirs) == 0 {
 		return fmt.Errorf("validation.allowed_dirs must list at least one folder")
+	}
+	if len(c.Validation.AllowedExtensions) == 0 {
+		return fmt.Errorf("validation.allowed_extensions must list at least one extension (e.g. \".md\")")
 	}
 	if _, err := auth.NewKeyring(c.Tokens); err != nil {
 		return err

@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"trove"
@@ -83,7 +84,8 @@ type Engine struct {
 	repo         *gitrepo.Repo
 	store        *store.Store
 	audit        *audit.Log
-	rules        *validate.Rules
+	maxFiles     atomic.Int64                    // proposal file limit, replaced with the rules
+	rules        atomic.Pointer[validate.Rules] // replaced when the owner changes the settings
 	lock         *store.Lock
 	props        map[string]*store.Proposal
 	now          func() time.Time
@@ -112,6 +114,12 @@ func Open(cfg config.Config, opts Options) (*Engine, error) {
 	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
 		return nil, err
 	}
+	st, err := config.LoadSettings(cfg.DataDir)
+	if err != nil {
+		return nil, err
+	}
+	cfg.Validation = cfg.Validation.WithSettings(st)
+	cfg.Limits = cfg.Limits.WithSettings(st)
 	lock, err := store.AcquireLock(filepath.Join(cfg.DataDir, "trove.lock"))
 	if err != nil {
 		return nil, err
@@ -160,9 +168,12 @@ func Open(cfg config.Config, opts Options) (*Engine, error) {
 			fmt.Fprintf(os.Stderr, "trove: WARNING: audit chain check failed after %d valid line(s): %q\n", res.Lines, err.Error())
 		}
 	}()
-	if e.rules, err = validate.New(cfg.Validation, cfg.Limits); err != nil {
+	rs, err := validate.New(cfg.Validation, cfg.Limits)
+	if err != nil {
 		return fail(err)
 	}
+	e.rules.Store(rs)
+	e.maxFiles.Store(int64(cfg.Limits.MaxFiles))
 	e.instructions = trove.AgentInstructions
 	if cfg.InstructionsFile != "" {
 		b, err := os.ReadFile(cfg.InstructionsFile)
@@ -537,7 +548,7 @@ func (e *Engine) Begin(a auth.Actor, req api.BeginReq) (api.Summary, error) {
 	e.expireLocked()
 	ctx, cancel := gitCtx()
 	defer cancel()
-	topic, err := e.rules.CheckTopic(req.Topic)
+	topic, err := e.ruleSet().CheckTopic(req.Topic)
 	if err != nil {
 		// The rejected topic is not logged: it may contain the secret.
 		e.refused(a, "begin", "", "rejected", "invalid topic")
@@ -547,7 +558,7 @@ func (e *Engine) Begin(a auth.Actor, req api.BeginReq) (api.Summary, error) {
 	if err != nil {
 		return api.Summary{}, newErr(KindInvalid, "%v", err)
 	}
-	if f := e.rules.Secrets(strings.Join(scope, " ")); len(f) > 0 {
+	if f := e.ruleSet().Secrets(strings.Join(scope, " ")); len(f) > 0 {
 		return api.Summary{}, newErr(KindInvalid, "the scope looks like it contains a secret")
 	}
 	if req.Base != "" && !ValidCommitID(req.Base) {
@@ -622,7 +633,7 @@ func (e *Engine) WriteChange(a auth.Actor, id string, req api.ChangeReq) (api.Su
 	if err != nil {
 		return api.Summary{}, err
 	}
-	if err := e.rules.CheckPath(req.Path); err != nil {
+	if err := e.ruleSet().CheckPath(req.Path); err != nil {
 		return api.Summary{}, newErr(KindInvalid, "%s: %v", safe.Line(req.Path, 0), err)
 	}
 	if req.Op != store.OpPut && req.Op != store.OpDelete {
@@ -663,8 +674,8 @@ func (e *Engine) WriteChange(a auth.Actor, id string, req api.ChangeReq) (api.Su
 	default:
 		// Deleting a file that only exists in this draft just drops it.
 	}
-	if len(changes) > e.cfg.Limits.MaxFiles {
-		return api.Summary{}, newErr(KindInvalid, "too many files (limit %d)", e.cfg.Limits.MaxFiles)
+	if len(changes) > e.limitFiles() {
+		return api.Summary{}, newErr(KindInvalid, "too many files (limit %d)", e.limitFiles())
 	}
 	total := 0
 	for _, c := range changes {
@@ -724,7 +735,7 @@ func (e *Engine) check(ctx context.Context, p *store.Proposal, changes []store.C
 		s, _, err := e.readAt(ctx, p.Base, path)
 		return s, err
 	}
-	return e.rules.Check(changes, bt, readBase, p.Scope), nil
+	return e.ruleSet().Check(changes, bt, readBase, p.Scope), nil
 }
 
 // maxStoredBytes bounds a stored proposal file: content plus JSON escaping
@@ -755,9 +766,9 @@ func (e *Engine) Submit(a auth.Actor, id string, changes []store.Change) (api.Su
 	if changes == nil {
 		changes = append([]store.Change(nil), p.Changes...)
 	} else {
-		if len(changes) > e.cfg.Limits.MaxFiles*2 {
+		if len(changes) > e.limitFiles()*2 {
 			e.mu.Unlock()
-			return api.Summary{}, newErr(KindInvalid, "too many files (limit %d)", e.cfg.Limits.MaxFiles)
+			return api.Summary{}, newErr(KindInvalid, "too many files (limit %d)", e.limitFiles())
 		}
 		written := 0
 		for _, c := range changes {
@@ -847,7 +858,7 @@ func (e *Engine) headConflict(ctx context.Context, p *store.Proposal, head strin
 	if err != nil {
 		return false, err
 	}
-	return !e.rules.CheckStructure(p.Changes, ht, p.Scope).OK(), nil
+	return !e.ruleSet().CheckStructure(p.Changes, ht, p.Scope).OK(), nil
 }
 
 // Rebase supersedes a stale pending proposal and opens a new draft at
@@ -995,7 +1006,7 @@ func (e *Engine) ensureContentChecked(id string) error {
 		return newErr(KindInternal, "%v", err)
 	}
 	e.valSem <- struct{}{}
-	res := e.rules.Check(frozen.Changes, bt, nil, frozen.Scope)
+	res := e.ruleSet().Check(frozen.Changes, bt, nil, frozen.Scope)
 	<-e.valSem
 	if !res.OK() {
 		return newErr(KindConflict, "proposal no longer passes validation: %s", res.Errors[0])
@@ -1090,7 +1101,7 @@ func (e *Engine) Approve(a auth.Actor, id, digest string) (api.ApproveResp, erro
 		return fail(KindConflict, "content check missing; approve again")
 	}
 	for _, t := range []map[string]gitrepo.Entry{bt, ht} {
-		if res := e.rules.CheckStructure(p.Changes, t, p.Scope); !res.OK() {
+		if res := e.ruleSet().CheckStructure(p.Changes, t, p.Scope); !res.OK() {
 			return fail(KindConflict, "proposal no longer fits the knowledge base: "+res.Errors[0]+"; the agent must rebase it")
 		}
 	}

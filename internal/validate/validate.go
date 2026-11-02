@@ -25,7 +25,10 @@ type Rules struct {
 	secrets []secretRule
 	allowed map[string]bool
 	exempt  map[string]bool
+	exts    []string
 }
+
+var extRe = regexp.MustCompile(`^\.[a-z0-9]{1,16}$`)
 
 // New compiles the rules.
 func New(v config.Validation, l config.Limits) (*Rules, error) {
@@ -51,17 +54,41 @@ func New(v config.Validation, l config.Limits) (*Rules, error) {
 	for _, p := range v.FrontmatterExempt {
 		r.exempt[p] = true
 	}
+	exts := v.AllowedExtensions
+	if len(exts) == 0 {
+		exts = []string{".md"}
+	}
+	seen := map[string]bool{}
+	for _, e := range exts {
+		if !extRe.MatchString(e) {
+			return nil, fmt.Errorf("allowed_extensions %q: must be lowercase letters or digits with a leading dot (e.g. \".yml\")", e)
+		}
+		if !seen[e] {
+			seen[e] = true
+			r.exts = append(r.exts, e)
+		}
+	}
 	return r, nil
 }
 
-// CheckPath validates a proposal path: CheckPathSyntax, .md extension,
-// inside an allowed folder.
+// extAllowed reports whether p ends in one of the allowed extensions.
+func (r *Rules) extAllowed(p string) bool {
+	for _, e := range r.exts {
+		if strings.HasSuffix(p, e) {
+			return true
+		}
+	}
+	return false
+}
+
+// CheckPath validates a proposal path: CheckPathSyntax, an allowed
+// extension (default only .md), inside an allowed folder.
 func (r *Rules) CheckPath(p string) error {
 	if err := CheckPathSyntax(p); err != nil {
 		return err
 	}
-	if !strings.HasSuffix(p, ".md") {
-		return fmt.Errorf("only .md files are allowed")
+	if !r.extAllowed(p) {
+		return fmt.Errorf("only %s files are allowed", strings.Join(r.exts, ", "))
 	}
 	segs := strings.Split(p, "/")
 	if len(segs) == 1 {
@@ -305,7 +332,7 @@ func (r *Rules) check(changes []store.Change, base map[string]gitrepo.Entry, rea
 				errf("%s: %v", shown, err)
 				continue
 			}
-			if !r.exempt[p] && len(r.v.FrontmatterFields) > 0 {
+			if strings.HasSuffix(p, ".md") && !r.exempt[p] && len(r.v.FrontmatterFields) > 0 {
 				fm, ok := Frontmatter(c.Content)
 				if !ok {
 					errf("%s: missing frontmatter (--- block with %s)", shown, strings.Join(r.v.FrontmatterFields, ", "))
@@ -317,7 +344,7 @@ func (r *Rules) check(changes []store.Change, base map[string]gitrepo.Entry, rea
 					}
 				}
 			}
-			for _, s := range r.Secrets(c.Content) {
+			for _, s := range r.SecretsFor(p, c.Content) {
 				errf("%s: possible secret, %s", shown, s)
 			}
 			for _, s := range r.SecretWarnings(c.Content) {
