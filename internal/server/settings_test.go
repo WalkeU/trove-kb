@@ -122,3 +122,28 @@ func TestSettingsWarnings(t *testing.T) {
 		t.Fatalf("expected no warnings, got %v (%v)", res.Warnings, err)
 	}
 }
+
+func TestSettingsCaseWarningIgnoresOldList(t *testing.T) {
+	ev := newEnv(t, nil, defaultFiles())
+	// Save a list with "zz" (no such folder in the KB), then rename it to "ZZ":
+	// the old list is being replaced, so there is nothing to collide with.
+	cur := ev.e.Settings()
+	if _, err := ev.e.UpdateSettings(owner, api.Settings{AllowedDirs: append(cur.AllowedDirs, "zz", "artifacts"), AllowedExtensions: []string{".md", ".yml"}}, false); err != nil {
+		t.Fatal(err)
+	}
+	res, err := ev.e.UpdateSettings(owner, api.Settings{AllowedDirs: append(cur.AllowedDirs, "ZZ", "artifacts"), AllowedExtensions: []string{".md", ".yml"}}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(res.Warnings, "\n"); strings.Contains(got, "differs from") {
+		t.Errorf("unexpected case warning against the old list:\n%s", got)
+	}
+	// Two names of the new list that differ only in case still warn.
+	res, err = ev.e.UpdateSettings(owner, api.Settings{AllowedDirs: append(cur.AllowedDirs, "zz", "ZZ", "artifacts"), AllowedExtensions: []string{".md", ".yml"}}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(res.Warnings, "\n"); !strings.Contains(got, "differs from") {
+		t.Errorf("expected a case warning inside the new list, got:\n%s", got)
+	}
+}
