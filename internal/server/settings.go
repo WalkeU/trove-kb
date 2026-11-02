@@ -159,8 +159,11 @@ func (e *Engine) settingsWarnings(dirs, exts []string, maxFiles int) []string {
 			out = append(out, fmt.Sprintf("Folder %q has %d file(s) in the KB but is not in the allowed list: proposals can no longer change them. If you renamed it, keep the old name until the files are moved.", d, folders[d]))
 		}
 	}
+	// Case collisions are checked against the folders that really exist and
+	// against the other names of the new list, not against the old list that
+	// this save replaces.
 	for _, d := range dirs {
-		for _, other := range append(append([]string(nil), names...), e.cfg.Validation.AllowedDirs...) {
+		for _, other := range append(append([]string(nil), names...), dirs...) {
 			if other != d && strings.EqualFold(other, d) {
 				out = append(out, fmt.Sprintf("Folder %q differs from %q only in letter case: they collide on Windows and macOS.", d, other))
 				break
