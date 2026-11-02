@@ -194,6 +194,6 @@ type RenameResp struct {
 	To       string   `json:"to"`
 	Files    int      `json:"files"`
 	Commit   string   `json:"commit,omitempty"`
-	Settings Settings `json:"settings,omitempty"`
+	Settings *Settings `json:"settings,omitempty"`
 	Warnings []string `json:"warnings,omitempty"`
 }

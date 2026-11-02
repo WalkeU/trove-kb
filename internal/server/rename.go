@@ -195,7 +195,7 @@ func (e *Engine) RenameFolder(a auth.Actor, req api.RenameReq, dryRun bool) (api
 	e.cfg.Validation = cand
 	e.rules.Store(rs)
 	e.logEvent(a, "folder-rename", "", "ok", safe.Line(fmt.Sprintf("%s -> %s files=%d commit=%s", from, to, len(moved), commit), 400))
-	resp.Settings = api.Settings{AllowedDirs: dirs, AllowedExtensions: exts, MaxFiles: e.limitFiles()}
+	resp.Settings = &api.Settings{AllowedDirs: dirs, AllowedExtensions: exts, MaxFiles: e.limitFiles()}
 	return resp, nil
 }
 
