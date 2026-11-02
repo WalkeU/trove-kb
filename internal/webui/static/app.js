@@ -449,7 +449,7 @@ async function showSettings(seq, notice) {
   actions.appendChild(save);
   box.appendChild(actions);
   box.appendChild(message);
-  renameSection(box);
+  renameSection(box, message);
 
   const body = () => ({ allowed_dirs: lines(dirs.value), allowed_extensions: lines(exts.value), max_files: Number(max.value) });
   const show = (res) => {
@@ -500,7 +500,7 @@ async function showSettings(seq, notice) {
   setView(box);
 }
 
-function renameSection(box) {
+function renameSection(box, notice) {
   box.appendChild(el("h2", null, "Rename a folder"));
   box.appendChild(el("p", "muted", "Moves every file of a top-level folder to the new name in one commit and updates the allowed folders. It merges into nothing: the new name must not exist. Links inside notes are not rewritten."));
   const folders = [...new Set(state.files.filter((f) => f.includes("/")).map((f) => f.split("/")[0]))].sort();
@@ -526,6 +526,7 @@ function renameSection(box) {
   const payload = () => ({ from: sel.value, to: to.value.trim() });
   check.addEventListener("click", async () => {
     out.replaceChildren();
+    notice.replaceChildren();
     if (!payload().to) { out.appendChild(errorBox(new Error("Enter the new folder name."))); return; }
     check.disabled = true;
     try {
@@ -907,7 +908,7 @@ function renderReview(rv, seq) {
   wrap.appendChild(dl);
 
   const alerts = el("div", "alerts");
-  for (const f of s.stale_files || []) alerts.appendChild(el("div", "banner error", "STALE: " + f + " changed since base"));
+  for (const f of s.stale_files || []) alerts.appendChild(el("div", "banner error", "STALE: " + f + " changed or moved since the proposal was made (for example its folder was renamed)"));
   for (const o of s.overlaps || []) alerts.appendChild(el("div", "banner warn", "OVERLAP: pending proposal " + o + " touches the same file(s)"));
   if ((s.warnings || []).length) {
     const box = el("div", "banner warn");
@@ -952,7 +953,7 @@ function decisionPanel(s, seq) {
   const ap = el("div", "approve-box");
   ap.appendChild(el("h2", null, "Approve"));
   if (s.status === "stale") {
-    ap.appendChild(el("p", "banner error", "This proposal is stale (a touched file changed since its base). It cannot be approved; the agent has to rebase it."));
+    ap.appendChild(el("p", "banner error", "This proposal is stale (a touched file changed, or its folder was renamed or moved, since the proposal was made). It cannot be approved; the agent has to rebase it or submit it again in the current folder layout."));
   }
   const lbl = el("label", "check");
   const cb = el("input");
@@ -1013,7 +1014,7 @@ async function approve(btn, cb, status, seq) {
   const problems = [];
   if (fs.digest !== shown.digest) problems.push("the digest is different");
   if (fs.state !== "pending") problems.push("it is no longer pending (now " + fs.state + ")");
-  if (fs.status === "stale") problems.push("it became stale (a touched file changed)");
+  if (fs.status === "stale") problems.push("it became stale (a touched file changed or its folder was renamed)");
   if (JSON.stringify(fresh) !== shown.snapshot) problems.push("the review is not identical to the one on screen");
   if (problems.length) {
     const box = el("div", "banner error");
