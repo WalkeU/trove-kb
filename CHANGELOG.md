@@ -1,6 +1,7 @@
 # Changelog
 
 [Unreleased]
+- 2026-11-03 - Added renaming of a top-level folder on the Settings page (owner only, one commit, audited, the allowed list follows, never merges into an existing folder, dry run first; links inside notes are not rewritten)
 - 2026-11-03 - Fixed a wrong letter-case warning on the Settings page: new folder names were compared with the old list that the save replaces
 - 2026-11-03 release v0.1.7
 - 2026-11-03 - Fixed the Settings page: max files must be a whole number from 1 to 500 (0 was silently accepted) and allowed folders must be single top-level names (`a/b` was accepted)
