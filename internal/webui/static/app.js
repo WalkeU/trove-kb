@@ -410,7 +410,7 @@ function showHome() {
 
 const lines = (text) => text.split("\n").map((l) => l.trim()).filter(Boolean);
 
-async function showSettings(seq) {
+async function showSettings(seq, notice) {
   const cur = await api("GET", "settings");
   if (seq !== state.seq) return;
   const box = el("div", "account settings");
@@ -442,12 +442,14 @@ async function showSettings(seq) {
   field("Max files per proposal (1 to 500)", "Larger proposals are refused when an agent submits them.", max);
 
   const message = el("div");
+  if (notice) message.appendChild(el("div", "banner ok", notice));
   const actions = el("div", "settings-actions");
   const save = el("button", "btn primary", "Save settings");
   save.type = "button";
   actions.appendChild(save);
   box.appendChild(actions);
   box.appendChild(message);
+  renameSection(box);
 
   const body = () => ({ allowed_dirs: lines(dirs.value), allowed_extensions: lines(exts.value), max_files: Number(max.value) });
   const show = (res) => {
@@ -496,6 +498,67 @@ async function showSettings(seq) {
     finally { save.disabled = false; }
   });
   setView(box);
+}
+
+function renameSection(box) {
+  box.appendChild(el("h2", null, "Rename a folder"));
+  box.appendChild(el("p", "muted", "Moves every file of a top-level folder to the new name in one commit and updates the allowed folders. It merges into nothing: the new name must not exist. Links inside notes are not rewritten."));
+  const folders = [...new Set(state.files.filter((f) => f.includes("/")).map((f) => f.split("/")[0]))].sort();
+  const sel = el("select");
+  for (const f of folders) { const o = el("option", null, f); o.value = f; sel.appendChild(o); }
+  const fromRow = el("label", "account-field", "Folder to rename");
+  fromRow.appendChild(sel);
+  box.appendChild(fromRow);
+  const to = el("input");
+  to.type = "text";
+  to.spellcheck = false;
+  to.autocapitalize = "off";
+  const toRow = el("label", "account-field", "New name");
+  toRow.appendChild(to);
+  box.appendChild(toRow);
+  const out = el("div");
+  const check = el("button", "btn", "Check rename");
+  check.type = "button";
+  const row = el("div", "settings-actions");
+  row.appendChild(check);
+  box.appendChild(row);
+  box.appendChild(out);
+  const payload = () => ({ from: sel.value, to: to.value.trim() });
+  check.addEventListener("click", async () => {
+    out.replaceChildren();
+    if (!payload().to) { out.appendChild(errorBox(new Error("Enter the new folder name."))); return; }
+    check.disabled = true;
+    try {
+      const r = await api("POST", "folders/rename?dry_run=1", payload());
+      const b = el("div", r.warnings && r.warnings.length ? "banner warn" : "banner");
+      b.appendChild(el("strong", null, r.files + " file(s) will move from " + r.from + "/ to " + r.to + "/."));
+      if (r.warnings && r.warnings.length) {
+        const ul = el("ul");
+        for (const w of r.warnings) ul.appendChild(el("li", null, w));
+        b.appendChild(ul);
+      }
+      const act = el("div", "settings-actions");
+      const go = el("button", "btn danger", "Rename now");
+      go.type = "button";
+      const cancel = el("button", "btn", "Cancel");
+      cancel.type = "button";
+      cancel.addEventListener("click", () => out.replaceChildren());
+      go.addEventListener("click", async () => {
+        go.disabled = true;
+        cancel.disabled = true;
+        try {
+          const done = await api("POST", "folders/rename", payload());
+          await loadTree();
+          await showSettings(state.seq, "Renamed " + done.from + "/ to " + done.to + "/ (" + done.files + " file(s), commit " + short(done.commit) + "). The allowed folders were updated.");
+        } catch (error) { out.replaceChildren(errorBox(error)); }
+      });
+      act.appendChild(go);
+      act.appendChild(cancel);
+      b.appendChild(act);
+      out.replaceChildren(b);
+    } catch (error) { out.replaceChildren(errorBox(error)); }
+    finally { check.disabled = false; }
+  });
 }
 
 function showAccount() {

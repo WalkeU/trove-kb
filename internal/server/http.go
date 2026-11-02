@@ -92,6 +92,7 @@ func NewHandler(e *Engine, keys *auth.Keyring, logger *log.Logger) *Handler {
 	m.HandleFunc("GET /v1/audit/verify", h.verify)
 	m.HandleFunc("GET /v1/settings", h.settingsGet)
 	m.HandleFunc("PUT /v1/settings", h.settingsPut)
+	m.HandleFunc("POST /v1/folders/rename", h.folderRename)
 	return h
 }
 
@@ -147,7 +148,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if actor.Role == auth.RoleApprover && (h.browserErr != nil || h.browserConfigured()) &&
 			((strings.HasPrefix(r.URL.Path, "/v1/proposals/") &&
 				(strings.HasSuffix(r.URL.Path, "/approve") || strings.HasSuffix(r.URL.Path, "/reject"))) ||
-				(r.Method == http.MethodPut && r.URL.Path == "/v1/settings")) {
+				(r.Method == http.MethodPut && r.URL.Path == "/v1/settings") ||
+				(r.Method == http.MethodPost && r.URL.Path == "/v1/folders/rename")) {
 			writeErr(w, http.StatusForbidden, "use the owner browser session to approve, reject or change settings", nil)
 			return
 		}
@@ -451,6 +453,19 @@ func (h *Handler) settingsPut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	res, err := h.e.UpdateSettings(actorOf(r), req, r.URL.Query().Get("dry_run") == "1")
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+func (h *Handler) folderRename(w http.ResponseWriter, r *http.Request) {
+	var req api.RenameReq
+	if !h.decode(w, r, smallBody, &req) {
+		return
+	}
+	res, err := h.e.RenameFolder(actorOf(r), req, r.URL.Query().Get("dry_run") == "1")
 	if err != nil {
 		h.fail(w, err)
 		return
