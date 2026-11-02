@@ -127,7 +127,7 @@ func (e *Engine) fileProblems(where, name string, content []byte) []string {
 	if err := validate.ContentError(string(content)); err != nil {
 		out = append(out, fmt.Sprintf("%s%s: %v", where, name, err))
 	}
-	for _, f := range e.rules.Secrets(string(content)) {
+	for _, f := range e.ruleSet().SecretsFor(name, string(content)) {
 		out = append(out, fmt.Sprintf("%s%s: possible secret, %s", where, name, f))
 	}
 	return out
@@ -281,7 +281,7 @@ func (e *Engine) importBundle(ctx context.Context, body io.Reader, opt ImportOpt
 			tooLarge = append(tooLarge, fmt.Sprintf("history: %s: a version larger than %d bytes cannot be scanned, refused", p, e.maxImportFile()))
 			return nil
 		}
-		for _, f := range e.rules.Secrets(string(content)) {
+		for _, f := range e.ruleSet().SecretsFor(p, string(content)) {
 			hist = append(hist, fmt.Sprintf("history: %s: possible secret, %s", p, f))
 		}
 		return nil

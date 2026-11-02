@@ -167,3 +167,16 @@ type VerifyResp struct {
 	LastHash string `json:"last_hash"`
 	Error    string `json:"error,omitempty"`
 }
+
+// Settings are the validation values the owner can change at runtime:
+// the top-level folders and the file extensions a proposal may touch.
+type Settings struct {
+	AllowedDirs       []string `json:"allowed_dirs"`
+	AllowedExtensions []string `json:"allowed_extensions"`
+	// MaxFiles is the most files one proposal may change (1 to 500). 0 in a
+	// request keeps the current value.
+	MaxFiles int `json:"max_files"`
+	// Warnings (response only) lists conflicts between the new values and
+	// the existing KB or the open proposals. They do not block saving.
+	Warnings []string `json:"warnings,omitempty"`
+}

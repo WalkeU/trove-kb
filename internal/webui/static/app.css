@@ -495,6 +495,10 @@ ul.flat { list-style: none; padding-left: 0; }
 .account { max-width: 560px; display: flex; flex-direction: column; align-items: flex-start; gap: 16px; }
 .account h1 { margin-bottom: 0; }
 .account-field { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.account-field textarea { padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 14px; }
+.account-field .small { font-size: 13px; }
+.settings-actions { display: flex; gap: 8px; margin-top: 8px; }
+.account-field input[type=number] { max-width: 140px; }
 .account-field input { padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
 
 /* ---- whole file dialog ---- */

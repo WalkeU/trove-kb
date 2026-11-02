@@ -277,3 +277,49 @@ func TestStripBOM(t *testing.T) {
 		}
 	}
 }
+
+func TestAllowedExtensions(t *testing.T) {
+	r := rules(t, func(c *config.Config) {
+		c.Validation.AllowedExtensions = []string{".md", ".yml", ".tf"}
+	})
+	for _, p := range []string{"notes/a.md", "notes/docker-compose.yml", "notes/vms.tf"} {
+		if err := r.CheckPath(p); err != nil {
+			t.Errorf("path %q should be accepted: %v", p, err)
+		}
+	}
+	for _, p := range []string{"notes/a.sh", "notes/a.YML", "notes/a.yaml", "notes/yml", "notes/.yml"} {
+		if err := r.CheckPath(p); err == nil {
+			t.Errorf("path %q should be rejected", p)
+		}
+	}
+	// default stays md-only, with the original message
+	if err := rules(t, nil).CheckPath("notes/a.yml"); err == nil || err.Error() != "only .md files are allowed" {
+		t.Errorf("default must stay md-only, got %v", err)
+	}
+	// frontmatter applies to .md only; secrets are scanned in every type
+	res := r.Check([]store.Change{
+		{Op: store.OpPut, Path: "notes/ok.yml", Content: "services:\n  a:\n    image: nginx\n"},
+		{Op: store.OpPut, Path: "notes/bad.yml", Content: "services:\n  db:\n    environment:\n      POSTGRES_PASSWORD: hunter2hunter2\n"},
+		{Op: store.OpPut, Path: "notes/nofm.md", Content: "no frontmatter"},
+	}, nil, nil, nil)
+	got := strings.Join(res.Errors, "\n")
+	if strings.Contains(got, "ok.yml") {
+		t.Errorf("clean yml must pass: %s", got)
+	}
+	if !strings.Contains(got, "bad.yml") {
+		t.Errorf("secret in yml must be blocked: %s", got)
+	}
+	if !strings.Contains(got, "nofm.md: missing frontmatter") {
+		t.Errorf("md still needs frontmatter: %s", got)
+	}
+}
+
+func TestAllowedExtensionsInvalid(t *testing.T) {
+	for _, e := range []string{"yml", ".YML", ".", ".a/b", ".tar.gz", ""} {
+		cfg := config.Default()
+		cfg.Validation.AllowedExtensions = []string{".md", e}
+		if _, err := New(cfg.Validation, cfg.Limits); err == nil {
+			t.Errorf("extension %q should be rejected", e)
+		}
+	}
+}

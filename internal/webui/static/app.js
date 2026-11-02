@@ -123,6 +123,7 @@ async function enterApp() {
   appendText($("who"), status.actor + " (" + status.role + ")");
   $("who").hidden = false;
   $("nav-review").hidden = status.role !== "approver";
+  $("nav-settings").hidden = status.role !== "approver";
   setPending(status.pending);
   touch();
   await loadTree();
@@ -367,7 +368,8 @@ async function route() {
   const seq = ++state.seq;
   const { segs, query } = parseHash();
   state.shown = null;
-  $("nav-read").classList.toggle("active", segs[0] !== "review" && segs[0] !== "account");
+  $("nav-read").classList.toggle("active", segs[0] !== "review" && segs[0] !== "account" && segs[0] !== "settings");
+  $("nav-settings").classList.toggle("active", segs[0] === "settings");
   $("nav-account").classList.toggle("active", segs[0] === "account");
   $("nav-review").classList.toggle("active", segs[0] === "review");
   markCurrent();
@@ -378,6 +380,8 @@ async function route() {
       await showSearch(seq, query.get("q") || "");
     } else if (segs[0] === "account") {
       showAccount();
+    } else if (segs[0] === "settings" && state.role === "approver") {
+      await showSettings(seq);
     } else if (segs[0] === "review" && state.role === "approver") {
       if (segs[1]) await showReview(seq, segs[1]);
       else await showPending(seq);
@@ -401,6 +405,91 @@ function showHome() {
     go.appendChild(fileLink(index, "Open " + index));
     box.appendChild(go);
   }
+  setView(box);
+}
+
+const lines = (text) => text.split("\n").map((l) => l.trim()).filter(Boolean);
+
+async function showSettings(seq) {
+  const cur = await api("GET", "settings");
+  if (seq !== state.seq) return;
+  const box = el("div", "account settings");
+  box.appendChild(el("h1", null, "Settings"));
+  box.appendChild(el("p", "muted", "Rules for what proposals may touch. Saved on the server (data_dir/settings.json) and applied at once, no restart. Before saving, the change is checked against the existing files and the open proposals."));
+  const field = (label, hint, input) => {
+    const row = el("label", "account-field", label);
+    row.appendChild(input);
+    row.appendChild(el("span", "muted small", hint));
+    box.appendChild(row);
+    return input;
+  };
+  const area = (values) => {
+    const ta = el("textarea");
+    ta.rows = Math.max(4, values.length + 1);
+    ta.spellcheck = false;
+    ta.autocapitalize = "off";
+    ta.value = values.join("\n");
+    return ta;
+  };
+  const dirs = field("Allowed folders (top level, one per line)", "Agents can write only inside these folders. To rename a folder, add the new name and keep the old one until its files are moved.", area(cur.allowed_dirs));
+  const exts = field("Allowed file extensions (one per line)", "Lowercase with a dot, for example .md, .yml, .tf. Frontmatter is required for .md only. Every type is scanned for secrets.", area(cur.allowed_extensions));
+  const max = el("input");
+  max.type = "number";
+  max.min = "1";
+  max.max = "500";
+  max.step = "1";
+  max.value = String(cur.max_files);
+  field("Max files per proposal (1 to 500)", "Larger proposals are refused when an agent submits them.", max);
+
+  const message = el("div");
+  const actions = el("div", "settings-actions");
+  const save = el("button", "btn primary", "Save settings");
+  save.type = "button";
+  actions.appendChild(save);
+  box.appendChild(actions);
+  box.appendChild(message);
+
+  const body = () => ({ allowed_dirs: lines(dirs.value), allowed_extensions: lines(exts.value), max_files: Number(max.value) });
+  const show = (res) => {
+    dirs.value = res.allowed_dirs.join("\n");
+    exts.value = res.allowed_extensions.join("\n");
+    max.value = String(res.max_files);
+  };
+  const doSave = async () => {
+    save.disabled = true;
+    message.replaceChildren();
+    try {
+      const res = await api("PUT", "settings", body());
+      show(res);
+      message.appendChild(el("div", "banner ok", "Saved and applied."));
+    } catch (error) { message.replaceChildren(errorBox(error)); }
+    finally { save.disabled = false; }
+  };
+  save.addEventListener("click", async () => {
+    save.disabled = true;
+    message.replaceChildren();
+    try {
+      const check = await api("PUT", "settings?dry_run=1", body());
+      if (!check.warnings || check.warnings.length === 0) { save.disabled = false; await doSave(); return; }
+      const warn = el("div", "banner warn");
+      warn.appendChild(el("strong", null, "This change conflicts with existing content:"));
+      const ul = el("ul");
+      for (const w of check.warnings) ul.appendChild(el("li", null, w));
+      warn.appendChild(ul);
+      const row = el("div", "settings-actions");
+      const go = el("button", "btn danger", "Save anyway");
+      go.type = "button";
+      go.addEventListener("click", async () => { go.disabled = true; cancel.disabled = true; await doSave(); });
+      const cancel = el("button", "btn", "Cancel");
+      cancel.type = "button";
+      cancel.addEventListener("click", () => message.replaceChildren());
+      row.appendChild(go);
+      row.appendChild(cancel);
+      warn.appendChild(row);
+      message.replaceChildren(warn);
+    } catch (error) { message.replaceChildren(errorBox(error)); }
+    finally { save.disabled = false; }
+  });
   setView(box);
 }
 
