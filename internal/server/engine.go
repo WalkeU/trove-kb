@@ -1083,7 +1083,7 @@ func (e *Engine) Approve(a auth.Actor, id, digest string) (api.ApproveResp, erro
 		return fail(KindInternal, err.Error())
 	}
 	if len(stale) > 0 {
-		return fail(KindConflict, "proposal is stale (changed since base: "+strings.Join(stale, ", ")+"); the agent must rebase it")
+		return fail(KindConflict, "proposal is stale (changed or moved since base, for example a renamed folder: "+strings.Join(stale, ", ")+"); the agent must rebase it or submit it again")
 	}
 	// Validate against the base AND the current HEAD tree: paths created
 	// since the base (file/folder or case conflicts) must block, otherwise
