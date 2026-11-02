@@ -180,3 +180,20 @@ type Settings struct {
 	// the existing KB or the open proposals. They do not block saving.
 	Warnings []string `json:"warnings,omitempty"`
 }
+
+// RenameReq asks to rename a top-level folder of the knowledge base.
+type RenameReq struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
+// RenameResp reports a (dry run of a) folder rename. Commit and Settings
+// are set only when the rename was applied.
+type RenameResp struct {
+	From     string   `json:"from"`
+	To       string   `json:"to"`
+	Files    int      `json:"files"`
+	Commit   string   `json:"commit,omitempty"`
+	Settings Settings `json:"settings,omitempty"`
+	Warnings []string `json:"warnings,omitempty"`
+}

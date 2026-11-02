@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"trove/internal/api"
+	"trove/internal/auth"
 	"trove/internal/store"
 )
 
@@ -145,5 +146,72 @@ func TestSettingsCaseWarningIgnoresOldList(t *testing.T) {
 	}
 	if got := strings.Join(res.Warnings, "\n"); !strings.Contains(got, "differs from") {
 		t.Errorf("expected a case warning inside the new list, got:\n%s", got)
+	}
+}
+
+func TestRenameFolder(t *testing.T) {
+	files := defaultFiles()
+	files["runbooks/ref.md"] = md("ref", "See notes/alpha.md for details.")
+	ev := newEnv(t, nil, files)
+	rename := func(a auth.Actor, from, to string, dry bool) (api.RenameResp, error) {
+		return ev.e.RenameFolder(a, api.RenameReq{From: from, To: to}, dry)
+	}
+
+	// Only the approver may rename.
+	_, err := rename(agent1, "notes", "notes2", false)
+	wantKind(t, err, KindForbidden)
+
+	// Dry run: reports files and the unrewritten reference, changes nothing.
+	res, err := rename(owner, "notes", "notes2", true)
+	if err != nil || res.Files != 2 {
+		t.Fatalf("dry run: %+v %v", res, err)
+	}
+	if got := strings.Join(res.Warnings, "\n"); !strings.Contains(got, "NOT rewritten") {
+		t.Errorf("expected a reference warning, got:\n%s", got)
+	}
+	if _, ok := ev.readHead("notes/alpha.md"); !ok {
+		t.Fatal("dry run moved files")
+	}
+
+	// Refused: unknown folder, same name, existing target, a name with a slash.
+	_, err = rename(owner, "nope", "x", false)
+	wantKind(t, err, KindNotFound)
+	_, err = rename(owner, "notes", "notes", false)
+	wantKind(t, err, KindInvalid)
+	_, err = rename(owner, "notes", "runbooks", false)
+	wantKind(t, err, KindConflict)
+	_, err = rename(owner, "notes", "a/b", false)
+	wantKind(t, err, KindInvalid)
+
+	// The rename: files moved in one commit, allowed list followed.
+	res, err = rename(owner, "notes", "notes2", false)
+	if err != nil || res.Commit == "" || res.Files != 2 {
+		t.Fatalf("rename: %+v %v", res, err)
+	}
+	if _, ok := ev.readHead("notes/alpha.md"); ok {
+		t.Error("old path still exists")
+	}
+	if got, ok := ev.readHead("notes2/alpha.md"); !ok || !strings.Contains(got, "Alpha note.") {
+		t.Errorf("new path missing or content changed: %q %v", got, ok)
+	}
+	dirs := strings.Join(ev.e.Settings().AllowedDirs, ",")
+	if !strings.Contains(dirs, "notes2") || strings.Contains(","+dirs+",", ",notes,") {
+		t.Errorf("allowed list did not follow: %s", dirs)
+	}
+	// The new folder accepts proposals, the old one no longer does.
+	if _, err := ev.e.Begin(agent1, api.BeginReq{Topic: "t"}); err != nil {
+		t.Fatal(err)
+	}
+	ev.reopen()
+	if !strings.Contains(strings.Join(ev.e.Settings().AllowedDirs, ","), "notes2") {
+		t.Error("renamed folder not persisted")
+	}
+
+	// Case-only rename of a folder is allowed (old paths disappear in the same commit).
+	if _, err := rename(owner, "notes2", "Notes2", false); err != nil {
+		t.Fatalf("case-only rename: %v", err)
+	}
+	if _, ok := ev.readHead("Notes2/beta.md"); !ok {
+		t.Error("case-only rename did not move files")
 	}
 }
