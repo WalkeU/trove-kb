@@ -183,6 +183,45 @@ func decodeAny(s string) []byte {
 	return nil
 }
 
+// configCred is the stricter credential rule for non-markdown files (YAML,
+// compose, .tf, ...): there "key: value" is configuration, not prose, so it
+// counts like "key=value" (any literal value of 6+ characters).
+var configCred = secretRule{
+	name: "credential assignment (config file)",
+	re:   regexp.MustCompile(`(?i)(?:^|[^\pL])(` + credKeys + `)["']?\s*(:=|=|:)\s*(["'` + "`" + `]?)([^\s"'<>` + "`" + `]+)`),
+	accept: func(m []string) bool {
+		v := strings.TrimRight(m[4], ",;.")
+		return len(v) >= 6 && !isPlaceholder(v) && !isCode(v)
+	},
+}
+
+// SecretsFor is Secrets for the file at path: markdown notes use the prose
+// tuned rules, every other file type additionally gets configCred.
+func (r *Rules) SecretsFor(path, content string) []string {
+	out := r.Secrets(content)
+	if strings.HasSuffix(path, ".md") {
+		return out
+	}
+	norm := normalizeForScan(content)
+	seen := map[string]bool{}
+	for _, f := range out {
+		seen[f] = true
+	}
+	for i, line := range strings.Split(norm, "\n") {
+		for _, m := range configCred.re.FindAllStringSubmatch(line, -1) {
+			if configCred.accept(m) {
+				f := fmt.Sprintf("line %d: %s", i+1, configCred.name)
+				if !seen[f] {
+					seen[f] = true
+					out = append(out, f)
+				}
+				break
+			}
+		}
+	}
+	return out
+}
+
 // Secrets returns the blocking secret findings of a text. The scan is a
 // guard against accidental leaks; it cannot stop deliberate evasion.
 func (r *Rules) Secrets(content string) []string {

@@ -150,3 +150,31 @@ func TestEnvTrustedProxies(t *testing.T) {
 		t.Fatalf("got %v", cfg.WebTrustedProxies)
 	}
 }
+
+func TestSettingsFile(t *testing.T) {
+	dir := t.TempDir()
+	if s, err := LoadSettings(dir); err != nil || s != nil {
+		t.Fatalf("missing file must give nil, nil: %v %v", s, err)
+	}
+	in := Settings{AllowedDirs: []string{"infra", "x"}, AllowedExtensions: []string{".md", ".yml"}}
+	if err := SaveSettings(dir, in); err != nil {
+		t.Fatal(err)
+	}
+	out, err := LoadSettings(dir)
+	if err != nil || out == nil || len(out.AllowedDirs) != 2 || out.AllowedExtensions[1] != ".yml" {
+		t.Fatalf("round trip: %+v %v", out, err)
+	}
+	v := Default().Validation.WithSettings(out)
+	if len(v.AllowedDirs) != 2 || v.AllowedDirs[1] != "x" || v.AllowedExtensions[1] != ".yml" || !v.AllowRootFiles {
+		t.Fatalf("WithSettings: %+v", v)
+	}
+	// A damaged or empty file fails closed.
+	for _, body := range []string{`{`, `{"allowed_dirs":[],"allowed_extensions":[".md"]}`, `{"allowed_dirs":["a"],"nope":1}`} {
+		if err := os.WriteFile(filepath.Join(dir, SettingsFile), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := LoadSettings(dir); err == nil {
+			t.Errorf("%q must be rejected", body)
+		}
+	}
+}

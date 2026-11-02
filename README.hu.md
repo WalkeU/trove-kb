@@ -273,11 +273,13 @@ Szerver: a `trove init` generálja, vagy a [`trove.example.json`](trove.example.
 | `data_dir` | `/data` | `kb.git/` (bare repo, `main` ág), `proposals/` (nyitott javaslatok), `archive/` (lezártak, csak metaadat), `audit.jsonl`, `tmp/`, `trove.lock` (egy szerverpéldány) |
 | `tls_cert`, `tls_key` | üres | beépített TLS; vagy reverse proxy / VPN |
 | `tokens_file` | `tokens.json` | token hashek ([`tokens.example.json`](tokens.example.json)) |
+| `limits.max_files` | `50` | legfeljebb ennyi fájl egy javaslatban (a Settings oldalon szerkeszthető, 1-500) |
 | `limits.per_agent` / `limits.total` | `5` / `20` | nyitott vázlat/javaslat |
 | `limits.ttl_hours` | `168` | lejárat (7 nap) |
 | `limits.max_file_bytes` / `limits.max_total_bytes` | 256 KiB / 1 MiB | fájlonként / javaslatonként |
 | `limits.agent_bytes_per_day` / `limits.agent_begins_per_day` | 20 MiB / `100` | napi agentenkénti kvóta |
 | `validation.allowed_dirs` | `infra`, `projects`, `apps`, `claude`, `snippets`, `runbooks`, `decisions` | felső szintű mappák; üres lista konfigurációs hiba |
+| `validation.allowed_extensions` | `[".md"]` | melyik kiterjesztésű fájlt érinthet egy javaslat (kisbetűs, ponttal, pl. `.yml`, `.tf`); frontmatter csak `.md`-hez kell, minden típust titokra szűr, a nem-markdown fájloknál a `kulcs: érték` is úgy számít, mint a `kulcs=érték` |
 | `validation.frontmatter_fields` | `title`, `updated`, `status` | kötelező frontmatter (`INDEX.md`, `README.md` kivétel) |
 | `validation.extra_secret_patterns` | `[]` | saját titok-minták |
 | `disable_ui` | `false` | `true` kikapcsolja a `/ui/` alatti webes felületet |

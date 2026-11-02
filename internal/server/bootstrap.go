@@ -41,7 +41,7 @@ func (e *Engine) Bootstrap(a auth.Actor, files []store.Change) (string, error) {
 	if len(files) == 0 {
 		return "", newErr(KindInvalid, "no files")
 	}
-	if res := e.rules.Check(files, map[string]gitrepo.Entry{}, nil, nil); !res.OK() {
+	if res := e.ruleSet().Check(files, map[string]gitrepo.Entry{}, nil, nil); !res.OK() {
 		return "", &Error{Kind: KindInvalid, Msg: "welcome files failed validation", Details: res.Errors}
 	}
 	var edits []gitrepo.Edit

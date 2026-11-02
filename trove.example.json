@@ -23,6 +23,7 @@
   "validation": {
     "allowed_dirs": ["infra", "projects", "apps", "claude", "snippets", "runbooks", "decisions"],
     "allow_root_files": true,
+    "allowed_extensions": [".md"],
     "frontmatter_fields": ["title", "updated", "status"],
     "frontmatter_exempt": ["INDEX.md", "README.md"],
     "extra_secret_patterns": []
