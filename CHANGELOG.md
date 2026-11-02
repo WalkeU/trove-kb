@@ -1,6 +1,8 @@
 # Changelog
 
 [Unreleased]
+- 2026-11-03 - Fixed a wrong letter-case warning on the Settings page: new folder names were compared with the old list that the save replaces
+- 2026-11-03 release v0.1.7
 - 2026-11-03 - Fixed the Settings page: max files must be a whole number from 1 to 500 (0 was silently accepted) and allowed folders must be single top-level names (`a/b` was accepted)
 - 2026-11-03 release v0.1.6
 - 2026-11-02 - Added a Settings page for the owner (allowed folders, allowed extensions, max files per proposal; saved to `data_dir/settings.json`, no restart, audited, with a conflict warning before saving) and `validation.allowed_extensions` so other text files such as `.yml` or `.tf` can be stored (frontmatter for `.md` only; non-markdown files get a stricter `key: value` secret rule)
