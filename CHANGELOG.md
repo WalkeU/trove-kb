@@ -2,6 +2,7 @@
 
 [Unreleased]
 - 2026-11-03 - Clearer messages for proposals made stale by a renamed folder, the old Settings banners clear when a new rename check starts and the rename dry run no longer returns an empty settings object
+- 2026-11-03 release v0.1.9
 - 2026-11-03 - Added renaming of a top-level folder on the Settings page (owner only, one commit, audited, the allowed list follows, never merges into an existing folder, dry run first; links inside notes are not rewritten)
 - 2026-11-03 release v0.1.8
 - 2026-11-03 - Fixed a wrong letter-case warning on the Settings page: new folder names were compared with the old list that the save replaces
