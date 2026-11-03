@@ -1,4 +1,4 @@
-VERSION ?= 0.1.0-dev
+VERSION ?= $(shell cat VERSION)
 LDFLAGS := -s -w -X trove.Version=$(VERSION)
 PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64
 

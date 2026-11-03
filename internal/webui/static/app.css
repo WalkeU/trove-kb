@@ -591,3 +591,71 @@ dialog.modal::backdrop { background: rgba(0, 0, 0, 0.55); }
 
 /* A spelled-out mark, kept apart from the text it precedes. */
 .inv.bom { margin-right: 4px; }
+
+/* ---- version, about, history ---- */
+
+.version {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  text-decoration: none;
+  margin-left: -8px;
+}
+
+.version:hover { color: var(--accent); }
+
+.about, .history { max-width: 820px; }
+
+.version-line { font-size: 15px; }
+
+.release { margin: 18px 0; }
+
+.release h3 { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; margin: 0 0 6px; }
+
+.release-date { font-weight: 400; font-size: 14px; }
+
+ul.changes { margin: 0; padding-left: 20px; }
+
+ul.changes li { margin: 4px 0; overflow-wrap: anywhere; }
+
+.change-date { font-family: var(--mono); font-size: 12px; margin-right: 8px; }
+
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+
+.tab {
+  padding: 4px 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 14px;
+}
+
+.tab:hover { border-color: var(--accent); color: var(--text); }
+
+.tab.active { border-color: var(--accent); color: var(--text); background: var(--panel); }
+
+.history-item:hover { border-color: var(--line); }
+
+.history-files { margin-top: 6px; font-size: 14px; }
+
+.history-files summary { cursor: pointer; color: var(--muted); }
+
+.history-files ul { margin: 6px 0 0; }
+
+.history-files li { display: flex; gap: 8px; align-items: baseline; overflow-wrap: anywhere; }
+
+.op { font-family: var(--mono); font-size: 12px; min-width: 6ch; color: var(--muted); }
+
+.op-added { color: var(--add-fg); }
+
+.op-deleted { color: var(--del-fg); }
+
+.path { font-family: var(--mono); font-size: 13px; }
+
+@media (max-width: 760px) {
+  .top { flex-wrap: wrap; }
+  #nav { order: 10; width: 100%; overflow-x: auto; }
+  #nav a { white-space: nowrap; }
+  .version { display: none; }
+}

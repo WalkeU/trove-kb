@@ -197,3 +197,36 @@ type RenameResp struct {
 	Settings *Settings `json:"settings,omitempty"`
 	Warnings []string `json:"warnings,omitempty"`
 }
+
+// AboutResp is returned by GET /v1/about: the running version and the
+// changelog the binary was built from.
+type AboutResp struct {
+	Version   string `json:"version"`
+	Changelog string `json:"changelog"`
+}
+
+// HistoryFile is one file touched by a history entry.
+type HistoryFile struct {
+	Path string `json:"path"`
+	Op   string `json:"op"` // added | modified | deleted | write (rejected proposals)
+}
+
+// HistoryEntry is one decision or owner action in GET /v1/history.
+type HistoryEntry struct {
+	// Kind: applied | rejected | import | rename | bootstrap | other
+	Kind      string        `json:"kind"`
+	Time      time.Time     `json:"time"`
+	Topic     string        `json:"topic"`
+	Proposal  string        `json:"proposal,omitempty"`
+	Agent     string        `json:"agent,omitempty"`
+	DecidedBy string        `json:"decided_by,omitempty"`
+	Commit    string        `json:"commit,omitempty"`
+	Reason    string        `json:"reason,omitempty"`
+	Files     []HistoryFile `json:"files,omitempty"`
+}
+
+// HistoryResp is returned by GET /v1/history, newest first.
+type HistoryResp struct {
+	Entries   []HistoryEntry `json:"entries"`
+	Truncated bool           `json:"truncated,omitempty"`
+}

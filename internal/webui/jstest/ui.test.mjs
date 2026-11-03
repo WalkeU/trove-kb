@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  parse, parseInline, safeExternal, resolveHref, resolveWiki, splitInvisible, joinPath, classifyDiffLine, filterPaths,
+  parse, parseInline, safeExternal, resolveHref, resolveWiki, splitInvisible, joinPath, classifyDiffLine, filterPaths, parseChangelog,
 } from "../static/md.js";
 
 // ---- a minimal fake DOM, enough for render.js ----
@@ -233,4 +233,15 @@ test("a byte order mark gets a spelled-out label and is dropped from rendered ma
   const blocks = parse(bom + "---\ntitle: t\n---\n\n" + bom + "USPRIV\n");
   assert.equal(blocks[0].t, "fm");
   assert.ok(!JSON.stringify(blocks).includes(bom));
+});
+
+test("parseChangelog groups entries by release, newest first", () => {
+  const text = "# Changelog\n\n[Unreleased]\n- 2026-11-03 - Newest fix\n- 2026-11-03 release v0.1.9\n- 2026-11-03 - Added `x`\n- 2026-11-02 - Older one\n- 2026-11-01 release v0.1.8\n- 2026-10-31 release v0.1.7\n- 2026-10-30 - Very old\n";
+  assert.deepEqual(parseChangelog(text), [
+    { version: "", date: "", entries: [{ date: "2026-11-03", text: "Newest fix" }] },
+    { version: "0.1.9", date: "2026-11-03", entries: [{ date: "2026-11-03", text: "Added `x`" }, { date: "2026-11-02", text: "Older one" }] },
+    { version: "0.1.8", date: "2026-11-01", entries: [] },
+    { version: "0.1.7", date: "2026-10-31", entries: [{ date: "2026-10-30", text: "Very old" }] },
+  ]);
+  assert.deepEqual(parseChangelog("# Changelog\n\n[Unreleased]\n- 2026-11-03 release v1.0.0\n"), [{ version: "1.0.0", date: "2026-11-03", entries: [] }]);
 });
