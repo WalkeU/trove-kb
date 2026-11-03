@@ -2,7 +2,7 @@
 // cookies managed by the server. JavaScript reads a separate CSRF value,
 // never the access token, refresh token or password after submission.
 
-import { parse, filterPaths, classifyDiffLine } from "./md.js";
+import { parse, filterPaths, classifyDiffLine, parseChangelog } from "./md.js";
 import { el, appendText, appendEscaped, renderBlocks, readHref } from "./render.js";
 
 const API = "../v1/";
@@ -17,6 +17,7 @@ const state = {
   files: [],
   fileSet: new Set(),
   commit: "",
+  about: null,
   lastActive: Date.now(),
   shown: null,
   seq: 0,
@@ -54,6 +55,8 @@ function lock(message) {
   $("app").hidden = true;
   $("nav").hidden = true;
   $("who").hidden = true;
+  $("version").hidden = true;
+  state.about = null;
   $("lock").hidden = true;
   $("menu").hidden = true;
   $("login").hidden = false;
@@ -124,7 +127,9 @@ async function enterApp() {
   $("who").hidden = false;
   $("nav-review").hidden = status.role !== "approver";
   $("nav-settings").hidden = status.role !== "approver";
+  $("nav-history").hidden = status.role !== "approver";
   setPending(status.pending);
+  loadAbout();
   touch();
   await loadTree();
   route();
@@ -368,8 +373,10 @@ async function route() {
   const seq = ++state.seq;
   const { segs, query } = parseHash();
   state.shown = null;
-  $("nav-read").classList.toggle("active", segs[0] !== "review" && segs[0] !== "account" && segs[0] !== "settings");
+  $("nav-read").classList.toggle("active", !["review", "account", "settings", "history", "about"].includes(segs[0]));
   $("nav-settings").classList.toggle("active", segs[0] === "settings");
+  $("nav-history").classList.toggle("active", segs[0] === "history");
+  $("nav-about").classList.toggle("active", segs[0] === "about");
   $("nav-account").classList.toggle("active", segs[0] === "account");
   $("nav-review").classList.toggle("active", segs[0] === "review");
   markCurrent();
@@ -380,6 +387,10 @@ async function route() {
       await showSearch(seq, query.get("q") || "");
     } else if (segs[0] === "account") {
       showAccount();
+    } else if (segs[0] === "about") {
+      await showAbout(seq);
+    } else if (segs[0] === "history" && state.role === "approver") {
+      await showHistory(seq, query.get("kind") || "all");
     } else if (segs[0] === "settings" && state.role === "approver") {
       await showSettings(seq);
     } else if (segs[0] === "review" && state.role === "approver") {
@@ -608,6 +619,151 @@ function showAccount() {
   setView(box);
 }
 
+
+// ---- about: version and changelog ----
+
+async function loadAbout() {
+  try {
+    const a = await api("GET", "about");
+    state.about = a;
+    const v = $("version");
+    v.textContent = a.version ? "v" + String(a.version) : "";
+    v.hidden = !a.version;
+  } catch { /* the version label is optional */ }
+}
+
+// inlineCode renders `code` spans, everything else as plain text.
+function inlineCode(parent, s) {
+  for (const part of String(s).split(/(`[^`]+`)/)) {
+    if (/^`[^`]+`$/.test(part)) parent.appendChild(el("code", null, part.slice(1, -1)));
+    else if (part) appendText(parent, part);
+  }
+}
+
+async function showAbout(seq) {
+  const a = state.about || await api("GET", "about");
+  if (seq !== state.seq) return;
+  state.about = a;
+  const version = String(a.version || "");
+  const box = el("div", "about");
+  box.appendChild(el("h1", null, "About Trove"));
+  const p = el("p", "version-line");
+  appendText(p, "Running version ");
+  p.appendChild(el("strong", null, version ? "v" + version : "unknown"));
+  box.appendChild(p);
+  box.appendChild(el("h2", null, "Changelog"));
+  const groups = parseChangelog(a.changelog);
+  if (!groups.length) box.appendChild(el("p", "muted", "The changelog is empty."));
+  for (const g of groups) {
+    const sec = el("section", "release");
+    const h = el("h3");
+    if (g.version) {
+      appendText(h, "v" + g.version);
+      if (g.date) h.appendChild(el("span", "muted release-date", g.date));
+      if (g.version === version) h.appendChild(el("span", "badge ready", "running"));
+    } else {
+      appendText(h, "Unreleased");
+      h.appendChild(el("span", "badge", "not in a release yet"));
+    }
+    sec.appendChild(h);
+    if (!g.entries.length) {
+      sec.appendChild(el("p", "muted", "No entries."));
+    } else {
+      const ul = el("ul", "changes");
+      for (const e of g.entries) {
+        const li = el("li");
+        li.appendChild(el("span", "muted change-date", e.date));
+        inlineCode(li, e.text);
+        ul.appendChild(li);
+      }
+      sec.appendChild(ul);
+    }
+    box.appendChild(sec);
+  }
+  setView(box);
+}
+
+// ---- history of decisions ----
+
+const historyKinds = [
+  ["all", "All", "#/history"],
+  ["applied", "Approved", "#/history?kind=applied"],
+  ["rejected", "Rejected", "#/history?kind=rejected"],
+  ["owner", "Owner actions", "#/history?kind=owner"],
+];
+
+// historyHref returns one of the fixed filter routes above.
+function historyHref(kind) {
+  const row = historyKinds.find(([k]) => k === kind);
+  return row ? row[2] : "#/history";
+}
+const kindLabel = { applied: "approved", rejected: "rejected", import: "import", rename: "rename", bootstrap: "setup", other: "commit" };
+const opLabel = { added: "added", modified: "changed", deleted: "deleted", write: "write" };
+
+function historyMatches(kind, en) {
+  if (kind === "all") return true;
+  if (kind === "owner") return en.kind !== "applied" && en.kind !== "rejected";
+  return en.kind === kind;
+}
+
+async function showHistory(seq, kind) {
+  if (!historyKinds.some(([k]) => k === kind)) kind = "all";
+  const res = await api("GET", "history");
+  if (seq !== state.seq) return;
+  const all = Array.isArray(res.entries) ? res.entries : [];
+  const list = all.filter((en) => historyMatches(kind, en));
+  const wrap = el("div", "history");
+  wrap.appendChild(el("h1", null, "History"));
+  wrap.appendChild(el("p", "muted", "What you approved and rejected, and the owner actions (import, folder renames), newest first. Approved changes are read from the knowledge base history, so they never drop out."));
+  const tabs = el("nav", "tabs");
+  tabs.setAttribute("aria-label", "Filter history");
+  for (const [k, label] of historyKinds) {
+    const n = all.filter((en) => historyMatches(k, en)).length;
+    const t = el("a", k === kind ? "tab active" : "tab", label + " (" + n + ")");
+    t.href = historyHref(k);
+    if (k === kind) t.setAttribute("aria-current", "page");
+    tabs.appendChild(t);
+  }
+  wrap.appendChild(tabs);
+  if (res.truncated) wrap.appendChild(el("p", "muted", "Only the newest " + all.length + " entries are shown."));
+  if (!list.length) wrap.appendChild(el("p", "muted", "Nothing here yet."));
+  for (const en of list) {
+    const card = el("div", "card history-item");
+    const top = el("div", "card-top");
+    const badge = en.kind === "applied" ? "badge ready" : en.kind === "rejected" ? "badge stale" : "badge";
+    top.appendChild(el("span", badge, kindLabel[en.kind] || String(en.kind)));
+    top.appendChild(el("span", "topic", String(en.topic || "")));
+    card.appendChild(top);
+    const meta = [fmtTime(en.time)];
+    if (en.agent) meta.push("from " + en.agent);
+    if (en.decided_by) {
+      const verb = en.kind === "rejected" ? "rejected by " : en.kind === "applied" ? "approved by " : "by ";
+      meta.push(verb + en.decided_by);
+    }
+    if (en.proposal) meta.push("proposal " + short(en.proposal));
+    if (en.commit) meta.push("commit " + short(en.commit));
+    card.appendChild(el("div", "card-meta muted", meta.filter(Boolean).join(" · ")));
+    if (en.reason) card.appendChild(el("div", "card-flags", "Reason: " + String(en.reason)));
+    const files = Array.isArray(en.files) ? en.files : [];
+    if (files.length) {
+      const det = el("details", "history-files");
+      det.appendChild(el("summary", null, files.length + " file(s)"));
+      const ul = el("ul", "flat");
+      for (const f of files) {
+        const li = el("li");
+        li.appendChild(el("span", "op op-" + String(f.op), opLabel[f.op] || String(f.op)));
+        const path = String(f.path);
+        if (f.op !== "deleted" && en.kind !== "rejected" && state.fileSet.has(path)) li.appendChild(fileLink(path, path));
+        else li.appendChild(el("span", "path", path));
+        ul.appendChild(li);
+      }
+      det.appendChild(ul);
+      card.appendChild(det);
+    }
+    wrap.appendChild(card);
+  }
+  setView(wrap);
+}
 
 // ---- reader view ----
 

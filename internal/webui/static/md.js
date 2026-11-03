@@ -560,3 +560,21 @@ export function filterPaths(paths, q) {
   if (!needle) return paths.slice();
   return paths.filter((p) => p.toLowerCase().includes(needle));
 }
+
+// parseChangelog groups CHANGELOG.md lines by release. The file is newest
+// first: entries above a "release vX" line belong to the release above it,
+// entries above the first marker are not released yet (version "").
+export function parseChangelog(text) {
+  const groups = [{ version: "", date: "", entries: [] }];
+  for (const raw of String(text || "").split("\n")) {
+    const line = raw.trim();
+    const rel = /^- (\d{4}-\d{2}-\d{2}) release v?(\S+)$/.exec(line);
+    if (rel) {
+      groups.push({ version: rel[2], date: rel[1], entries: [] });
+      continue;
+    }
+    const ent = /^- (\d{4}-\d{2}-\d{2}) - (.+)$/.exec(line);
+    if (ent) groups[groups.length - 1].entries.push({ date: ent[1], text: ent[2] });
+  }
+  return groups.filter((g) => g.version || g.entries.length);
+}

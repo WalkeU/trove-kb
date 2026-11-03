@@ -369,3 +369,8 @@ func syncDir(dir string) {
 	_ = d.Sync()
 	d.Close()
 }
+
+// LoadArchive reads every archived (closed) proposal, content dropped.
+func (s *Store) LoadArchive() (map[string]*Proposal, error) {
+	return s.loadDir(s.archiveDir)
+}

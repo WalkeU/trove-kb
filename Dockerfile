@@ -6,7 +6,8 @@ FROM golang:1.22-alpine AS build
 WORKDIR /src
 # .dockerignore keeps data/, tokens.json, trove.json and .env out of the context.
 COPY . .
-ARG VERSION=0.1.0
+# Empty VERSION: the binary reports the VERSION file it was built from.
+ARG VERSION=
 RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X trove.Version=${VERSION}" -o /out/trove ./cmd/trove
 
 # Runtime stage: Alpine with git, non-root, works with a read-only root fs
