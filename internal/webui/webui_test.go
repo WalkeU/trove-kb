@@ -190,10 +190,11 @@ func TestScriptsAvoidDangerousSinks(t *testing.T) {
 }
 
 // Every href assignment must use a value built by the link rules:
-// readHref (internal), res.url (passed safeExternal), or a review route.
+// readHref (internal), res.url (passed safeExternal), a review route or
+// historyHref (fixed history filter routes).
 func TestHrefAssignmentsAreSanitized(t *testing.T) {
 	re := regexp.MustCompile(`\.href\s*=\s*([^;]+);`)
-	allowed := []string{"readHref(", "res.url", `"#/review/" + encodeURIComponent(`, `"#/review"`}
+	allowed := []string{"readHref(", "res.url", `"#/review/" + encodeURIComponent(`, `"#/review"`, "historyHref("}
 	n := 0
 	for _, name := range []string{"app.js", "render.js", "md.js"} {
 		for _, m := range re.FindAllStringSubmatch(stripComments(read(t, name)), -1) {

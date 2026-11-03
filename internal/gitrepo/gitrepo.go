@@ -13,7 +13,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // Branch is the only branch Trove maintains.
@@ -549,4 +551,52 @@ func (r *Repo) HistoryBlobs(ctx context.Context, commit string, maxSize int64, f
 		return fmt.Errorf("cat-file --batch: %v: %s", err, strings.TrimSpace(errb.String()))
 	}
 	return nil
+}
+
+// Commit is one commit of the main history with the files it changed.
+type Commit struct {
+	ID      string
+	Time    time.Time
+	Message string
+	Files   []FileStatus
+}
+
+// FileStatus is one --name-status line: A, M, D (renames are split).
+type FileStatus struct {
+	Status string
+	Path   string
+}
+
+// Log returns at most limit commits reachable from main, newest first.
+func (r *Repo) Log(ctx context.Context, limit int) ([]Commit, error) {
+	head, err := r.Head(ctx)
+	if err != nil || head == "" {
+		return nil, err
+	}
+	out, err := r.run(ctx, nil, nil, "-c", "core.quotePath=false", "log", "--no-renames", "--name-status",
+		"--format=%x01%H%x00%cI%x00%B%x00", "-n", strconv.Itoa(limit), head)
+	if err != nil {
+		return nil, err
+	}
+	var res []Commit
+	for _, rec := range strings.Split(string(out), "\x01") {
+		if strings.TrimSpace(rec) == "" {
+			continue
+		}
+		parts := strings.SplitN(rec, "\x00", 4)
+		if len(parts) != 4 {
+			continue
+		}
+		c := Commit{ID: strings.TrimSpace(parts[0]), Message: parts[2]}
+		c.Time, _ = time.Parse(time.RFC3339, strings.TrimSpace(parts[1]))
+		for _, line := range strings.Split(parts[3], "\n") {
+			st, path, ok := strings.Cut(strings.TrimRight(line, "\r"), "\t")
+			if !ok || st == "" || path == "" {
+				continue
+			}
+			c.Files = append(c.Files, FileStatus{Status: st[:1], Path: path})
+		}
+		res = append(res, c)
+	}
+	return res, nil
 }

@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -93,6 +94,8 @@ func NewHandler(e *Engine, keys *auth.Keyring, logger *log.Logger) *Handler {
 	m.HandleFunc("GET /v1/settings", h.settingsGet)
 	m.HandleFunc("PUT /v1/settings", h.settingsPut)
 	m.HandleFunc("POST /v1/folders/rename", h.folderRename)
+	m.HandleFunc("GET /v1/about", h.about)
+	m.HandleFunc("GET /v1/history", h.history)
 	return h
 }
 
@@ -306,6 +309,28 @@ func (h *Handler) status(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, st)
+}
+
+func (h *Handler) about(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, h.e.About())
+}
+
+func (h *Handler) history(w http.ResponseWriter, r *http.Request) {
+	limit := 0
+	if v := r.URL.Query().Get("limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 {
+			h.fail(w, newErr(KindInvalid, "limit must be a positive whole number"))
+			return
+		}
+		limit = n
+	}
+	res, err := h.e.History(actorOf(r), limit)
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
