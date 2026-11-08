@@ -1,11 +1,11 @@
 ﻿<svg xmlns="http://www.w3.org/2000/svg" width="200" height="61" viewBox="-6 34 520 158" fill="none" role="img" aria-label="Trove">
   <title>Trove</title>
   <style>
-    .ink { stroke: #1c1b18; }
-    .tick { stroke: #9a6200; }
+    .ink { stroke: #1d1c1a; }
+    .tick { stroke: #8a5a00; }
     @media (prefers-color-scheme: dark) {
-      .ink { stroke: #ebe5d6; }
-      .tick { stroke: #e3a83c; }
+      .ink { stroke: #e9e6df; }
+      .tick { stroke: #e0a63a; }
     }
   </style>
   <!-- Tick wordmark: monoline "trove" whose v is the human approval tick. -->
