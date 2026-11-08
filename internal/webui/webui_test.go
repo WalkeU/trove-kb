@@ -18,13 +18,14 @@ func get(t *testing.T, method, path string) *httptest.ResponseRecorder {
 
 func TestAssetsServedWithHeaders(t *testing.T) {
 	want := map[string]string{
-		"/ui/":            "text/html; charset=utf-8",
-		"/ui/index.html":  "text/html; charset=utf-8",
-		"/ui/app.js":      "text/javascript; charset=utf-8",
-		"/ui/md.js":       "text/javascript; charset=utf-8",
-		"/ui/render.js":   "text/javascript; charset=utf-8",
-		"/ui/app.css":     "text/css; charset=utf-8",
-		"/ui/favicon.svg": "image/svg+xml",
+		"/ui/":                     "text/html; charset=utf-8",
+		"/ui/index.html":           "text/html; charset=utf-8",
+		"/ui/app.js":               "text/javascript; charset=utf-8",
+		"/ui/md.js":                "text/javascript; charset=utf-8",
+		"/ui/render.js":            "text/javascript; charset=utf-8",
+		"/ui/app.css":              "text/css; charset=utf-8",
+		"/ui/favicon.svg":          "image/svg+xml",
+		"/ui/apple-touch-icon.png": "image/png",
 	}
 	for path, ct := range want {
 		rec := get(t, http.MethodGet, path)

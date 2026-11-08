@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="Trove">
+  <title>Trove</title>
+  <!-- Small-size cut of the Tick wordmark: a t whose foot flicks up into the approval tick. -->
+  <rect width="256" height="256" rx="56" fill="#8a5a00"/>
+  <path d="M108 46V190L190 124M66 98H156" fill="none" stroke="#fbfaf7" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

@@ -85,11 +85,18 @@ button, input, textarea { font: inherit; color: inherit; }
 }
 
 .brand {
-  font-weight: 700;
-  letter-spacing: 0.02em;
+  display: inline-flex;
+  align-items: center;
   color: var(--text);
   text-decoration: none;
 }
+
+/* Tick wordmark: ink follows the text colour, the v (approval tick) uses the accent. */
+.wordmark { display: block; fill: none; stroke-width: 24; stroke-linecap: round; stroke-linejoin: round; }
+.wordmark .wm-ink { stroke: currentColor; }
+.wordmark .wm-tick { stroke: var(--accent); }
+.brand .wordmark { width: 72px; height: 22px; }
+.login h1 .wordmark { width: 145px; height: 44px; }
 
 #nav { display: flex; gap: 4px; }
 
