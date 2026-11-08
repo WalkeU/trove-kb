@@ -1,6 +1,7 @@
 # Changelog
 
 [Unreleased]
+- 2026-11-08 - New Trove logo: a "trove" wordmark whose v is the approval tick, a matching icon (favicon and Apple touch icon) in the web UI, and refreshed README logo, social preview and hero animation
 - 2026-11-03 release v0.1.10
 - 2026-11-03 - Added an About page with the running version and the changelog, a version label in the header and an owner-only History page of approved and rejected proposals and owner actions; the version now comes from the VERSION file when the build sets none
 - 2026-11-03 - Clearer messages for proposals made stale by a renamed folder, the old Settings banners clear when a new rename check starts and the rename dry run no longer returns an empty settings object

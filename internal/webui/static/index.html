@@ -7,13 +7,14 @@
 <meta name="color-scheme" content="light dark">
 <title>Trove</title>
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="stylesheet" href="app.css">
 <script type="module" src="app.js"></script>
 </head>
 <body>
 <header class="top">
   <button id="menu" class="icon-btn only-narrow" type="button" aria-controls="side" aria-expanded="false" hidden>Files</button>
-  <a class="brand" href="#/">Trove</a>
+  <a class="brand" href="#/" aria-label="Trove"><svg class="wordmark" viewBox="-6 34 520 158" aria-hidden="true" focusable="false"><path class="wm-ink" d="M28 48V146a30 30 0 0 0 30 30h8M8 80H70M104 176V80M104 130a50 50 0 0 1 50-50h6M184 128a50 50 0 1 0 100 0a50 50 0 1 0-100 0M404 128H500a48 48 0 1 0-11.2 30.8"/><path class="wm-tick" d="M314 110L342 176L380 80"/></svg></a>
   <a id="version" class="version" href="#/about" title="Version and changelog" hidden></a>
   <nav id="nav" hidden>
     <a id="nav-read" href="#/">Read</a>
@@ -31,7 +32,7 @@
 <noscript>JavaScript is required to use the Trove interface.</noscript>
 
 <main id="login" class="login" hidden>
-  <h1>Trove</h1>
+  <h1><svg class="wordmark" viewBox="-6 34 520 158" role="img" aria-label="Trove" focusable="false"><path class="wm-ink" d="M28 48V146a30 30 0 0 0 30 30h8M8 80H70M104 176V80M104 130a50 50 0 0 1 50-50h6M184 128a50 50 0 1 0 100 0a50 50 0 1 0-100 0M404 128H500a48 48 0 1 0-11.2 30.8"/><path class="wm-tick" d="M314 110L342 176L380 80"/></svg></h1>
   <p id="login-description">Loading sign-in...</p>
   <p id="https-note" class="banner error" hidden>This server requires HTTPS to sign in. Open the HTTPS address.</p>
   <div id="setup-fields" class="login-fields" hidden>
