@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-//go:embed static/index.html static/app.css static/app.js static/md.js static/render.js static/favicon.svg static/apple-touch-icon.png
+//go:embed static/index.html static/app.css static/app.js static/md.js static/render.js static/review.js static/changes.js static/favicon.svg static/apple-touch-icon.png
 var files embed.FS
 
 // Prefix is the URL path the UI is served under.
@@ -29,6 +29,8 @@ var assets = map[string]struct{ file, ctype string }{
 	"app.js":               {"static/app.js", "text/javascript; charset=utf-8"},
 	"md.js":                {"static/md.js", "text/javascript; charset=utf-8"},
 	"render.js":            {"static/render.js", "text/javascript; charset=utf-8"},
+	"review.js":            {"static/review.js", "text/javascript; charset=utf-8"},
+	"changes.js":           {"static/changes.js", "text/javascript; charset=utf-8"},
 	"favicon.svg":          {"static/favicon.svg", "image/svg+xml"},
 	"apple-touch-icon.png": {"static/apple-touch-icon.png", "image/png"},
 }
