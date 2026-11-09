@@ -2,8 +2,10 @@
 // cookies managed by the server. JavaScript reads a separate CSRF value,
 // never the access token, refresh token or password after submission.
 
-import { parse, filterPaths, classifyDiffLine, parseChangelog } from "./md.js";
-import { el, appendText, appendEscaped, renderBlocks, readHref } from "./render.js";
+import { parse, filterPaths, parseChangelog } from "./md.js";
+import { el, appendText, renderBlocks, readHref } from "./render.js";
+import { renderChanges } from "./review.js";
+import { summarize } from "./changes.js";
 
 const API = "../v1/";
 const AUTH = "../auth/";
@@ -49,7 +51,6 @@ function lock(message) {
   state.fileSet = new Set();
   state.shown = null;
   state.seq++;
-  closeFullDiff();
   $("view").replaceChildren();
   $("tree").replaceChildren();
   $("app").hidden = true;
@@ -246,7 +247,6 @@ function fmtTime(s) {
 }
 
 function setView(...nodes) {
-  closeFullDiff();
   $("view").replaceChildren(...nodes);
   $("view").scrollTop = 0;
   window.scrollTo(0, 0);
@@ -379,6 +379,9 @@ async function route() {
   $("nav-about").classList.toggle("active", segs[0] === "about");
   $("nav-account").classList.toggle("active", segs[0] === "account");
   $("nav-review").classList.toggle("active", segs[0] === "review");
+  // A single review uses the whole width: the change tree replaces the
+  // knowledge base tree while it is open.
+  $("app").classList.toggle("wide", segs[0] === "review" && !!segs[1] && state.role === "approver");
   markCurrent();
   try {
     if (segs[0] === "read" && segs.length > 1) {
@@ -879,189 +882,80 @@ async function showPending(seq) {
   setView(wrap);
 }
 
-function metaRow(dl, k, v) {
-  if (v === undefined || v === null || v === "") return;
-  dl.appendChild(el("dt", null, k));
-  const dd = el("dd");
-  if (v instanceof Node) dd.appendChild(v);
-  else appendText(dd, String(v));
-  dl.appendChild(dd);
-}
-
-function renderDiff(text) {
-  const pre = el("pre", "diff");
-  const lines = String(text).split("\n");
-  if (lines.length && lines[lines.length - 1] === "") lines.pop();
-  for (const line of lines) {
-    const row = el("div", "dl " + classifyDiffLine(line));
-    appendEscaped(row, line === "" ? " " : line);
-    pre.appendChild(row);
-  }
-  return pre;
-}
-
-// ---- whole file dialog ----
-//
-// The server sends every line of the changed file with its diff marker
-// (full_diff: " " unchanged, "-" removed, "+" added, nothing collapsed).
-// The dialog shows it with old and new line numbers and the changes
-// highlighted. It is a native modal <dialog>: the browser keeps focus
-// inside and makes the page behind it inert. Esc, the Close button and a
-// click on the backdrop close it; focus then returns to the opener.
-
-let fullDialog = null;
-
-function closeFullDiff() {
-  if (fullDialog && fullDialog.open) fullDialog.close();
-}
-
-function fullFileButton(path, text) {
-  const b = el("button", "btn small full-open", "View the whole file with changes");
-  b.type = "button";
-  b.setAttribute("aria-haspopup", "dialog");
-  b.addEventListener("click", () => openFullDiff(path, text, b));
-  return b;
-}
-
-function openFullDiff(path, text, opener) {
-  closeFullDiff();
-  const lines = String(text).split("\n");
-  if (lines.length && lines[lines.length - 1] === "") lines.pop();
-
-  const pre = el("pre", "diff full");
-  const changes = [];
-  let oldNo = 0;
-  let newNo = 0;
-  let added = 0;
-  let removed = 0;
-  let prevKind = "";
-  for (const line of lines) {
-    const mark = line[0] === "+" || line[0] === "-" ? line[0] : " ";
-    const kind = mark === "+" ? "add" : mark === "-" ? "del" : "ctx";
-    const row = el("div", "dl " + kind);
-    if (kind !== "add") oldNo++;
-    if (kind !== "del") newNo++;
-    if (kind === "add") added++;
-    if (kind === "del") removed++;
-    row.appendChild(el("span", "ln", kind === "add" ? "" : String(oldNo)));
-    row.appendChild(el("span", "ln", kind === "del" ? "" : String(newNo)));
-    row.appendChild(el("span", "mk", mark));
-    const body = line.slice(1);
-    row.appendChild(appendEscaped(el("span", "tx"), body === "" ? " " : body));
-    // The first row of each run of changed lines is a "change" stop.
-    if (kind !== "ctx" && (prevKind === "ctx" || prevKind === "")) changes.push(row);
-    prevKind = kind;
-    pre.appendChild(row);
-  }
-
-  const dlg = el("dialog", "modal");
-  dlg.setAttribute("aria-modal", "true");
-  dlg.setAttribute("aria-labelledby", "full-title");
-  dlg.setAttribute("aria-describedby", "full-summary");
-  const box = el("div", "modal-box");
-
-  const head = el("div", "modal-head");
-  const title = el("h2", "modal-title");
-  title.id = "full-title";
-  appendText(title, "Whole file: " + path);
-  head.appendChild(title);
-  const close = el("button", "btn small", "Close");
-  close.type = "button";
-  close.setAttribute("aria-label", "Close the whole file view");
-  close.addEventListener("click", () => dlg.close());
-  head.appendChild(close);
-  box.appendChild(head);
-
-  const bar = el("div", "modal-bar");
-  const summary = el("p", "modal-summary");
-  summary.id = "full-summary";
-  summary.appendChild(el("span", "legend add", "+" + added + " added"));
-  summary.appendChild(el("span", "legend del", "-" + removed + " removed"));
-  appendText(summary, newNo + " line(s) in the new version, unchanged lines are not highlighted.");
-  bar.appendChild(summary);
-  let at = -1;
-  const step = (dir) => {
-    if (!changes.length) return;
-    at = (at + dir + changes.length) % changes.length;
-    changes[at].scrollIntoView({ block: "center" });
-    pos.textContent = "change " + (at + 1) + " of " + changes.length;
-  };
-  const prev = el("button", "btn small", "Previous change");
-  prev.type = "button";
-  prev.addEventListener("click", () => step(-1));
-  const next = el("button", "btn small", "Next change");
-  next.type = "button";
-  next.addEventListener("click", () => step(1));
-  const pos = el("span", "modal-pos", changes.length ? changes.length + " change(s)" : "no changes");
-  pos.setAttribute("role", "status");
-  prev.disabled = next.disabled = changes.length === 0;
-  bar.appendChild(prev);
-  bar.appendChild(next);
-  bar.appendChild(pos);
-  box.appendChild(bar);
-
-  const scroller = el("div", "modal-body");
-  scroller.tabIndex = 0;
-  scroller.setAttribute("aria-label", "File content with changes");
-  scroller.appendChild(pre);
-  box.appendChild(scroller);
-  dlg.appendChild(box);
-
-  // The dialog element covers the whole backdrop; the box inside it holds
-  // the content, so a click whose target is the dialog itself landed on
-  // the backdrop. Pressing inside and releasing outside does not close it.
-  let downOnBackdrop = false;
-  dlg.addEventListener("mousedown", (event) => { downOnBackdrop = event.target === dlg; });
-  dlg.addEventListener("click", (event) => {
-    if (event.target === dlg && downOnBackdrop) dlg.close();
-    downOnBackdrop = false;
-  });
-  dlg.addEventListener("close", () => {
-    document.documentElement.classList.remove("modal-open");
-    dlg.remove();
-    if (fullDialog === dlg) fullDialog = null;
-    if (opener && opener.isConnected) opener.focus();
-  });
-
-  document.body.appendChild(dlg);
-  fullDialog = dlg;
-  document.documentElement.classList.add("modal-open");
-  dlg.showModal();
-  close.focus();
-}
-
 async function showReview(seq, id) {
   const rv = await api("GET", "proposals/" + encodeURIComponent(id) + "/review");
   if (seq !== state.seq) return;
   renderReview(rv, seq);
 }
 
+function chip(label, value) {
+  const c = el("span", "chip");
+  c.appendChild(el("span", "chip-k", label));
+  if (value instanceof Node) c.appendChild(value);
+  else c.appendChild(el("span", "chip-v", String(value)));
+  return c;
+}
+
+// statBar shows the share of added, modified and deleted files.
+function statBar(sum, total) {
+  const bar = el("div", "statbar");
+  bar.setAttribute("aria-hidden", "true");
+  for (const k of ["added", "modified", "deleted"]) {
+    if (!sum[k]) continue;
+    const seg = el("span", "statbar-" + k);
+    seg.style.setProperty("--w", (sum[k] / total * 100).toFixed(2) + "%");
+    bar.appendChild(seg);
+  }
+  return bar;
+}
+
 function renderReview(rv, seq) {
   const s = rv.summary;
   const snapshot = JSON.stringify(rv);
   state.shown = { id: s.id, digest: s.digest, snapshot };
+  const files = rv.files || [];
+  const sum = summarize(files);
   const wrap = el("div", "review");
 
-  const back = el("a", "back", "All pending proposals");
+  const top = el("div", "rv-top");
+  const back = el("a", "back", "← All pending proposals");
   back.href = "#/review";
-  wrap.appendChild(back);
+  top.appendChild(back);
+  wrap.appendChild(top);
 
+  const head = el("header", "rv-head");
+  const title = el("div", "rv-title");
+  title.appendChild(statusBadge(s));
   const h = el("h1", "topic");
   appendText(h, s.topic);
-  wrap.appendChild(h);
-  wrap.appendChild(el("p", "untrusted", rv.notice));
+  title.appendChild(h);
+  head.appendChild(title);
+  const chips = el("div", "chips");
+  chips.appendChild(chip("agent", s.agent));
+  chips.appendChild(chip("proposal", short(s.id)));
+  chips.appendChild(chip("base", short(s.base)));
+  chips.appendChild(chip("submitted", fmtTime(s.submitted_at)));
+  if (fmtTime(s.expires_at)) chips.appendChild(chip("expires", fmtTime(s.expires_at)));
+  if ((s.scope || []).length) chips.appendChild(chip("scope", s.scope.join(", ")));
+  if (s.supersedes) chips.appendChild(chip("supersedes", short(s.supersedes) + " (earlier reviews do not carry over)"));
+  head.appendChild(chips);
 
-  const dl = el("dl", "meta");
-  metaRow(dl, "proposal", s.id);
-  metaRow(dl, "agent", s.agent);
-  metaRow(dl, "state", statusBadge(s));
-  metaRow(dl, "base", s.base);
-  if (s.supersedes) metaRow(dl, "supersedes", s.supersedes + " (earlier reviews do not carry over)");
-  if ((s.scope || []).length) metaRow(dl, "scope", s.scope.join(", "));
-  metaRow(dl, "submitted", fmtTime(s.submitted_at));
-  metaRow(dl, "expires", fmtTime(s.expires_at));
-  metaRow(dl, "loaded", new Date().toLocaleTimeString());
-  wrap.appendChild(dl);
+  const stats = el("div", "rv-stats");
+  const nums = el("div", "rv-nums");
+  nums.appendChild(el("span", "rv-files", files.length + " file(s)"));
+  for (const k of ["added", "modified", "deleted"]) {
+    if (sum[k]) nums.appendChild(el("span", "rv-n st-text-" + k, sum[k] + " " + k));
+  }
+  const lines = el("span", "lc");
+  lines.appendChild(el("span", "lc-add", "+" + sum.plus));
+  lines.appendChild(el("span", "lc-del", "−" + sum.minus));
+  nums.appendChild(lines);
+  stats.appendChild(nums);
+  if (files.length) stats.appendChild(statBar(sum, files.length));
+  head.appendChild(stats);
+  wrap.appendChild(head);
+
+  wrap.appendChild(el("p", "untrusted", rv.notice));
 
   const alerts = el("div", "alerts");
   for (const f of s.stale_files || []) alerts.appendChild(el("div", "banner error", "STALE: " + f + " changed or moved since the proposal was made (for example its folder was renamed)"));
@@ -1076,31 +970,26 @@ function renderReview(rv, seq) {
   }
   wrap.appendChild(alerts);
 
-  const files = rv.files || [];
-  const fh = el("h2");
-  appendText(fh, "Changes (" + files.length + " file(s), shown in full)");
-  wrap.appendChild(fh);
-  for (const f of files) {
-    const sec = el("section", "file-diff");
-    const t = el("h3");
-    t.appendChild(el("span", "op op-" + (f.new ? "new" : f.op), f.new ? "new" : f.op));
-    appendText(t, " " + f.path);
-    sec.appendChild(t);
-    sec.appendChild(renderDiff(f.diff));
-    if (f.full_diff) sec.appendChild(fullFileButton(f.path, f.full_diff));
-    wrap.appendChild(sec);
-  }
+  // The cards report how many files were marked viewed; the approve box listens.
+  const viewed = { n: 0, total: files.length, listeners: [] };
+  wrap.appendChild(renderChanges(files, {
+    onViewed(n, total) {
+      viewed.n = n;
+      viewed.total = total;
+      for (const f of viewed.listeners) f();
+    },
+  }));
 
   const dg = el("div", "digest");
   dg.appendChild(el("div", "fm-label", "digest"));
   dg.appendChild(el("code", "digest-value", s.digest));
   wrap.appendChild(dg);
 
-  if (s.state === "pending") wrap.appendChild(decisionPanel(s, seq));
+  if (s.state === "pending") wrap.appendChild(decisionPanel(s, seq, viewed));
   setView(wrap);
 }
 
-function decisionPanel(s, seq) {
+function decisionPanel(s, seq, viewed) {
   const panel = el("div", "decide");
   const status = el("div", "decide-status", "");
   status.setAttribute("role", "status");
@@ -1111,18 +1000,33 @@ function decisionPanel(s, seq) {
   if (s.status === "stale") {
     ap.appendChild(el("p", "banner error", "This proposal is stale (a touched file changed, or its folder was renamed or moved, since the proposal was made). It cannot be approved; the agent has to rebase it or submit it again in the current folder layout."));
   }
+  // Every changed file must be marked viewed before the read-confirmation
+  // can be ticked; the progress line says how many are left.
+  const progress = el("p", "view-progress");
+  ap.appendChild(progress);
   const lbl = el("label", "check");
   const cb = el("input");
   cb.type = "checkbox";
   lbl.appendChild(cb);
-  appendText(lbl, " I have read the complete diff above.");
+  appendText(lbl, " I have read the complete diff of every file.");
   ap.appendChild(lbl);
   const btn = el("button", "btn primary", "Approve digest " + short(s.digest));
   btn.type = "button";
   btn.disabled = true;
-  cb.addEventListener("change", () => {
-    btn.disabled = !cb.checked || s.status === "stale";
-  });
+  const sync = () => {
+    const done = viewed.n >= viewed.total;
+    progress.replaceChildren();
+    progress.classList.toggle("done", done);
+    appendText(progress, done
+      ? "All " + viewed.total + " file(s) marked viewed."
+      : viewed.n + " of " + viewed.total + " file(s) marked viewed. Mark every file as viewed before approving.");
+    cb.disabled = !done;
+    if (!done) cb.checked = false;
+    btn.disabled = !cb.checked || !done || s.status === "stale";
+  };
+  viewed.listeners.push(sync);
+  sync();
+  cb.addEventListener("change", sync);
   btn.addEventListener("click", () => approve(btn, cb, status, seq));
   ap.appendChild(btn);
   ap.appendChild(el("p", "muted", "The button sends exactly the digest shown above. Before sending, the page fetches the review again and stops if anything changed."));

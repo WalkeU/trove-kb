@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-//go:embed static/index.html static/app.css static/app.js static/md.js static/render.js static/favicon.svg
+//go:embed static/index.html static/app.css static/app.js static/md.js static/render.js static/review.js static/changes.js static/favicon.svg static/apple-touch-icon.png
 var files embed.FS
 
 // Prefix is the URL path the UI is served under.
@@ -23,13 +23,16 @@ const CSP = "default-src 'none'; script-src 'self'; style-src 'self'; connect-sr
 // assets maps the served name to the embedded file and its content type.
 // Only these names exist; there is no directory listing and no fallback.
 var assets = map[string]struct{ file, ctype string }{
-	"":            {"static/index.html", "text/html; charset=utf-8"},
-	"index.html":  {"static/index.html", "text/html; charset=utf-8"},
-	"app.css":     {"static/app.css", "text/css; charset=utf-8"},
-	"app.js":      {"static/app.js", "text/javascript; charset=utf-8"},
-	"md.js":       {"static/md.js", "text/javascript; charset=utf-8"},
-	"render.js":   {"static/render.js", "text/javascript; charset=utf-8"},
-	"favicon.svg": {"static/favicon.svg", "image/svg+xml"},
+	"":                     {"static/index.html", "text/html; charset=utf-8"},
+	"index.html":           {"static/index.html", "text/html; charset=utf-8"},
+	"app.css":              {"static/app.css", "text/css; charset=utf-8"},
+	"app.js":               {"static/app.js", "text/javascript; charset=utf-8"},
+	"md.js":                {"static/md.js", "text/javascript; charset=utf-8"},
+	"render.js":            {"static/render.js", "text/javascript; charset=utf-8"},
+	"review.js":            {"static/review.js", "text/javascript; charset=utf-8"},
+	"changes.js":           {"static/changes.js", "text/javascript; charset=utf-8"},
+	"favicon.svg":          {"static/favicon.svg", "image/svg+xml"},
+	"apple-touch-icon.png": {"static/apple-touch-icon.png", "image/png"},
 }
 
 // SetSecurityHeaders writes the headers shared by the UI and the API.

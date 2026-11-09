@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/trove-logo.svg" alt="Trove" width="300">
+  <img src="assets/trove-logo.svg" alt="Trove" width="200">
 </p>
 
 <p align="center">
