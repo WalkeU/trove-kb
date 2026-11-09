@@ -23,6 +23,8 @@ func TestAssetsServedWithHeaders(t *testing.T) {
 		"/ui/app.js":               "text/javascript; charset=utf-8",
 		"/ui/md.js":                "text/javascript; charset=utf-8",
 		"/ui/render.js":            "text/javascript; charset=utf-8",
+		"/ui/review.js":            "text/javascript; charset=utf-8",
+		"/ui/changes.js":           "text/javascript; charset=utf-8",
 		"/ui/app.css":              "text/css; charset=utf-8",
 		"/ui/favicon.svg":          "image/svg+xml",
 		"/ui/apple-touch-icon.png": "image/png",
@@ -179,7 +181,7 @@ func TestScriptsAvoidDangerousSinks(t *testing.T) {
 		"createContextualFragment", "DOMParser", "javascript:", "window.open", ".src =", "setTimeout(\"", "setInterval(\"",
 		"http://", "https://", "import(",
 	}
-	for _, name := range []string{"app.js", "md.js", "render.js"} {
+	for _, name := range []string{"app.js", "md.js", "render.js", "review.js", "changes.js"} {
 		src := read(t, name)
 		code := stripComments(src)
 		for _, b := range banned {
@@ -197,7 +199,7 @@ func TestHrefAssignmentsAreSanitized(t *testing.T) {
 	re := regexp.MustCompile(`\.href\s*=\s*([^;]+);`)
 	allowed := []string{"readHref(", "res.url", `"#/review/" + encodeURIComponent(`, `"#/review"`, "historyHref("}
 	n := 0
-	for _, name := range []string{"app.js", "render.js", "md.js"} {
+	for _, name := range []string{"app.js", "render.js", "md.js", "review.js", "changes.js"} {
 		for _, m := range re.FindAllStringSubmatch(stripComments(read(t, name)), -1) {
 			n++
 			ok := false
@@ -251,6 +253,25 @@ func TestTokenHandling(t *testing.T) {
 	}
 	if !strings.Contains(app, "{ digest: shown.digest }") {
 		t.Error("approve must send the digest of the review on screen")
+	}
+}
+
+// The read confirmation (and so the approve button) stays locked until
+// every changed file was marked viewed in the review.
+func TestApproveNeedsEveryFileOpened(t *testing.T) {
+	app := stripComments(read(t, "app.js"))
+	for _, want := range []string{
+		"const done = viewed.n >= viewed.total;",
+		"cb.disabled = !done;",
+		`btn.disabled = !cb.checked || !done || s.status === "stale";`,
+	} {
+		if !strings.Contains(app, want) {
+			t.Errorf("approve gating lacks %q", want)
+		}
+	}
+	rv := stripComments(read(t, "review.js"))
+	if !strings.Contains(rv, "opts.onViewed(viewed.size, files.length)") || !strings.Contains(rv, "if (cb.checked) viewed.add(i); else viewed.delete(i);") {
+		t.Error("the review cards must report viewed files")
 	}
 }
 

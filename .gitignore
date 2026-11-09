@@ -14,3 +14,6 @@ coverage.out
 # HyperFrames render state (assets/src)
 .hyperframes/
 
+
+# Local preview with mock data (local/dev.sh, seed), never committed
+/local/
