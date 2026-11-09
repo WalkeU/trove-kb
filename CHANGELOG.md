@@ -1,6 +1,7 @@
 # Changelog
 
 [Unreleased]
+- 2026-11-09 - Approvals: a change tree of added, modified and deleted files beside every file's diff as a card (line numbers, changed spans highlighted, unified or split view, whole file inline); approving needs every file marked viewed
 - 2026-11-08 - New Trove logo: a "trove" wordmark whose v is the approval tick, a matching icon (favicon and Apple touch icon) in the web UI, and refreshed README logo, social preview and hero animation
 - 2026-11-03 release v0.1.10
 - 2026-11-03 - Added an About page with the running version and the changelog, a version label in the header and an owner-only History page of approved and rejected proposals and owner actions; the version now comes from the VERSION file when the build sets none
