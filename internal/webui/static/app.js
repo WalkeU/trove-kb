@@ -4,7 +4,7 @@
 
 import { parse, filterPaths, parseChangelog } from "./md.js";
 import { el, appendText, renderBlocks, readHref } from "./render.js";
-import { renderChanges, LAYOUTS, layoutOf } from "./review.js";
+import { renderChanges } from "./review.js";
 import { summarize } from "./changes.js";
 
 const API = "../v1/";
@@ -23,7 +23,6 @@ const state = {
   lastActive: Date.now(),
   shown: null,
   seq: 0,
-  layout: "a",
 };
 let refreshing = null;
 const $ = (id) => document.getElementById(id);
@@ -398,7 +397,6 @@ async function route() {
     } else if (segs[0] === "settings" && state.role === "approver") {
       await showSettings(seq);
     } else if (segs[0] === "review" && state.role === "approver") {
-      if (query.has("layout")) state.layout = layoutOf(query.get("layout"));
       if (segs[1]) await showReview(seq, segs[1]);
       else await showPending(seq);
     } else {
@@ -866,7 +864,7 @@ async function showPending(seq) {
   if (!list.length) wrap.appendChild(el("p", "muted", "Nothing to review."));
   for (const s of list) {
     const a = el("a", "card");
-    a.href = "#/review/" + encodeURIComponent(s.id) + "?layout=" + layoutOf(state.layout);
+    a.href = "#/review/" + encodeURIComponent(s.id);
     const top = el("div", "card-top");
     top.appendChild(statusBadge(s));
     top.appendChild(el("span", "topic", s.topic));
@@ -911,36 +909,18 @@ function statBar(sum, total) {
   return bar;
 }
 
-// layoutSwitch offers the three review layouts while one is being chosen.
-function layoutSwitch(id) {
-  const nav = el("nav", "layout-switch");
-  nav.setAttribute("aria-label", "Review layout");
-  nav.appendChild(el("span", "layout-label", "Layout"));
-  for (const [k, name, hint] of LAYOUTS) {
-    const a = el("a", "layout-opt" + (k === state.layout ? " active" : ""));
-    a.href = "#/review/" + encodeURIComponent(id) + "?layout=" + k;
-    a.title = hint;
-    a.appendChild(el("span", "layout-key", k.toUpperCase()));
-    appendText(a, " " + name);
-    if (k === state.layout) a.setAttribute("aria-current", "true");
-    nav.appendChild(a);
-  }
-  return nav;
-}
-
 function renderReview(rv, seq) {
   const s = rv.summary;
   const snapshot = JSON.stringify(rv);
   state.shown = { id: s.id, digest: s.digest, snapshot };
   const files = rv.files || [];
   const sum = summarize(files);
-  const wrap = el("div", "review rv-" + state.layout);
+  const wrap = el("div", "review");
 
   const top = el("div", "rv-top");
   const back = el("a", "back", "← All pending proposals");
   back.href = "#/review";
   top.appendChild(back);
-  top.appendChild(layoutSwitch(s.id));
   wrap.appendChild(top);
 
   const head = el("header", "rv-head");
@@ -990,10 +970,9 @@ function renderReview(rv, seq) {
   }
   wrap.appendChild(alerts);
 
-  // The layouts report how many files were opened; the approve box listens.
+  // The cards report how many files were marked viewed; the approve box listens.
   const viewed = { n: 0, total: files.length, listeners: [] };
   wrap.appendChild(renderChanges(files, {
-    layout: state.layout,
     onViewed(n, total) {
       viewed.n = n;
       viewed.total = total;
@@ -1021,7 +1000,7 @@ function decisionPanel(s, seq, viewed) {
   if (s.status === "stale") {
     ap.appendChild(el("p", "banner error", "This proposal is stale (a touched file changed, or its folder was renamed or moved, since the proposal was made). It cannot be approved; the agent has to rebase it or submit it again in the current folder layout."));
   }
-  // Every changed file must have been opened before the read-confirmation
+  // Every changed file must be marked viewed before the read-confirmation
   // can be ticked; the progress line says how many are left.
   const progress = el("p", "view-progress");
   ap.appendChild(progress);
@@ -1039,8 +1018,8 @@ function decisionPanel(s, seq, viewed) {
     progress.replaceChildren();
     progress.classList.toggle("done", done);
     appendText(progress, done
-      ? "All " + viewed.total + " file(s) opened."
-      : viewed.n + " of " + viewed.total + " file(s) opened. Open every file before approving.");
+      ? "All " + viewed.total + " file(s) marked viewed."
+      : viewed.n + " of " + viewed.total + " file(s) marked viewed. Mark every file as viewed before approving.");
     cb.disabled = !done;
     if (!done) cb.checked = false;
     btn.disabled = !cb.checked || !done || s.status === "stale";

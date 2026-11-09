@@ -1,6 +1,6 @@
 // Trove UI: pure helpers for the review view (no DOM).
 //
-// They turn the server's review payload into the structures the layouts
+// They turn the server's review payload into the structures the review view
 // draw: the change tree, numbered diff rows, side-by-side pairs and the
 // changed span inside a modified line. Text stays exactly as the server
 // sent it (already escaped); rendering decides how to show it.

@@ -257,7 +257,7 @@ func TestTokenHandling(t *testing.T) {
 }
 
 // The read confirmation (and so the approve button) stays locked until
-// every changed file was opened in the review layout.
+// every changed file was marked viewed in the review.
 func TestApproveNeedsEveryFileOpened(t *testing.T) {
 	app := stripComments(read(t, "app.js"))
 	for _, want := range []string{
@@ -270,8 +270,8 @@ func TestApproveNeedsEveryFileOpened(t *testing.T) {
 		}
 	}
 	rv := stripComments(read(t, "review.js"))
-	if !strings.Contains(rv, "opts.onViewed(viewed.size, files.length)") {
-		t.Error("the review layouts must report opened files")
+	if !strings.Contains(rv, "opts.onViewed(viewed.size, files.length)") || !strings.Contains(rv, "if (cb.checked) viewed.add(i); else viewed.delete(i);") {
+		t.Error("the review cards must report viewed files")
 	}
 }
 

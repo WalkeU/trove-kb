@@ -1,28 +1,13 @@
-// Trove UI: the changed-files area of a review, in three layouts.
+// Trove UI: the changed-files area of a review.
 //
-//   a  Workspace: change tree on the left, one file at a time on the right
-//      (unified diff with line numbers, changes only or the whole file).
-//   b  Stream: change tree on the left, every file stacked as a card with a
-//      "Viewed" switch; the tree follows the scroll position.
-//   c  Split: change tree on the left, old and new side by side for one
-//      file, changed spans highlighted, with a change map beside the code.
-//
-// Every layout reports which files the owner has opened (onViewed), so the
-// approve step can require that every file was looked at. Only DOM
+// A change tree on the left (added, modified, deleted, with line counts and
+// viewed marks) and every changed file stacked as a card on the right, in a
+// unified or a side-by-side diff. Each card has a "Viewed" switch; the
+// approve step requires every file to be marked viewed (onViewed). Only DOM
 // construction through render.js helpers; text arrives already escaped.
 
 import { el, appendText, appendEscaped } from "./render.js";
 import { parseDiff, splitRows, pairChanges, inlineSpan, changeTree, treeOrder, fileStatus, STATUS_LETTER, language } from "./changes.js";
-
-export const LAYOUTS = [
-  ["a", "Workspace", "One file at a time, unified diff"],
-  ["b", "Stream", "All files stacked, mark each as viewed"],
-  ["c", "Split", "Old and new side by side"],
-];
-
-export function layoutOf(v) {
-  return LAYOUTS.some(([k]) => k === v) ? v : "a";
-}
 
 const STATUS_WORD = { added: "added", modified: "modified", deleted: "deleted" };
 
@@ -226,106 +211,36 @@ function rowsFor(f, whole) {
   return parseDiff(whole && f.full_diff ? f.full_diff : f.diff).rows;
 }
 
-// ---- layouts ----
+// Diff style shared by every card and kept while the page is open, so the
+// next proposal opens the way the owner left the last one.
+let diffStyle = "unified";
 
+// renderChanges draws the change tree and every changed file as a card.
+// opts.onViewed(n, total) reports how many files were marked viewed.
 export function renderChanges(files, opts) {
-  const layout = layoutOf(opts.layout);
   const viewed = new Set();
   const tree = changeTreeView(files, { onSelect: (i) => select(i) });
   const report = () => { tree.setViewed(viewed); opts.onViewed(viewed.size, files.length); };
-  const markViewed = (i, on = true) => {
-    if (on) viewed.add(i); else viewed.delete(i);
-    report();
-  };
-  const root = el("div", "changes layout-" + layout);
+  const root = el("div", "changes");
   root.appendChild(tree.node);
-  let select = () => {};
-
   if (files.length === 0) {
     root.appendChild(el("p", "muted", "This proposal changes no files."));
     report();
     return root;
   }
 
-  if (layout === "a" || layout === "c") {
-    const pane = el("section", "pane");
-    pane.setAttribute("aria-live", "polite");
-    root.appendChild(pane);
-    let current = tree.order[0];
-    let whole = false;
-    let split = layout === "c";
-    const draw = () => {
-      const f = files[current];
-      const d = parseDiff(f.diff);
-      const pos = tree.order.indexOf(current);
-      const tools = el("div", "ftools");
-      const mode = segmented("Lines shown", [["changes", "Changes"], ["whole", "Whole file"]], whole ? "whole" : "changes", (v) => { whole = v === "whole"; draw(); });
-      if (!f.full_diff) { for (const b of mode.buttons) b.disabled = true; mode.node.title = "A deleted file has only its removed lines"; }
-      tools.appendChild(mode.node);
-      if (layout === "c") {
-        tools.appendChild(segmented("Diff style", [["split", "Split"], ["unified", "Unified"]], split ? "split" : "unified", (v) => { split = v === "split"; draw(); }).node);
-      }
-      const nav = el("div", "fnav");
-      const prev = el("button", "btn small", "← Previous");
-      prev.type = "button";
-      prev.disabled = pos <= 0;
-      prev.addEventListener("click", () => select(tree.order[pos - 1]));
-      const next = el("button", "btn small", "Next →");
-      next.type = "button";
-      next.disabled = pos >= tree.order.length - 1;
-      next.addEventListener("click", () => select(tree.order[pos + 1]));
-      nav.appendChild(el("span", "muted small", "File " + (pos + 1) + " of " + files.length));
-      nav.appendChild(prev);
-      nav.appendChild(next);
-      tools.appendChild(nav);
-      const rows = rowsFor(f, whole);
-      const body = el("div", "fbody");
-      // An added or deleted file has only one side: no empty half.
-      const sideBySide = split && layout === "c" && fileStatus(f) === "modified";
-      const code = sideBySide ? splitCode(rows) : unifiedCode(rows);
-      if (sideBySide) {
-        const cols = el("div", "split-head");
-        cols.appendChild(el("span", null, fileStatus(f) === "added" ? "(new file)" : "Before"));
-        cols.appendChild(el("span", null, fileStatus(f) === "deleted" ? "(deleted)" : "After"));
-        body.appendChild(cols);
-      }
-      body.appendChild(code);
-      const wrap = el("div", "fcard");
-      wrap.appendChild(fileHead(f, d));
-      wrap.appendChild(tools);
-      if (layout === "c") {
-        const frame = el("div", "frame");
-        frame.appendChild(body);
-        frame.appendChild(changeMap(code));
-        wrap.appendChild(frame);
-      } else {
-        wrap.appendChild(body);
-      }
-      pane.replaceChildren(wrap);
-    };
-    select = (i) => {
-      current = i;
-      tree.setCurrent(i);
-      markViewed(i);
-      draw();
-      pane.scrollIntoView({ block: "nearest" });
-    };
-    root.addEventListener("keydown", (event) => {
-      if (event.target.closest && event.target.closest("textarea, input")) return;
-      const pos = tree.order.indexOf(current);
-      if ((event.key === "j" || event.key === "ArrowDown" && event.altKey) && pos < tree.order.length - 1) { event.preventDefault(); select(tree.order[pos + 1]); }
-      if ((event.key === "k" || event.key === "ArrowUp" && event.altKey) && pos > 0) { event.preventDefault(); select(tree.order[pos - 1]); }
-    });
-    root.tabIndex = -1;
-    tree.setCurrent(current);
-    markViewed(current);
-    draw();
-    return root;
-  }
-
-  // layout b: stream of cards
   const stream = el("section", "stream");
   root.appendChild(stream);
+
+  const bar = el("div", "stream-bar");
+  bar.appendChild(el("span", "stream-title", files.length + " changed file(s)"));
+  const redraws = [];
+  bar.appendChild(segmented("Diff style", [["unified", "Unified"], ["split", "Split"]], diffStyle, (v) => {
+    diffStyle = v;
+    for (const r of redraws) r();
+  }).node);
+  stream.appendChild(bar);
+
   const cards = new Map();
   for (const i of tree.order) {
     const f = files[i];
@@ -344,10 +259,25 @@ export function renderChanges(files, opts) {
     const head = fileHead(f, d, seen);
     head.insertBefore(toggle, head.firstChild);
     card.appendChild(head);
+
     let whole = false;
     const body = el("div", "fbody");
-    const draw = () => body.replaceChildren(unifiedCode(rowsFor(f, whole)));
+    // Split only helps when both sides exist: added and deleted files stay
+    // in one column.
+    const draw = () => {
+      const rows = rowsFor(f, whole);
+      if (diffStyle === "split" && fileStatus(f) === "modified") {
+        const cols = el("div", "split-head");
+        cols.appendChild(el("span", null, "Before"));
+        cols.appendChild(el("span", null, "After"));
+        body.replaceChildren(cols, splitCode(rows));
+      } else {
+        body.replaceChildren(unifiedCode(rows));
+      }
+    };
     draw();
+    redraws.push(draw);
+    card.appendChild(body);
     if (f.full_diff) {
       const more = el("button", "btn small expand", "Show the whole file");
       more.type = "button";
@@ -356,35 +286,35 @@ export function renderChanges(files, opts) {
         more.textContent = whole ? "Show changes only" : "Show the whole file";
         draw();
       });
-      card.appendChild(body);
       card.appendChild(more);
-    } else {
-      card.appendChild(body);
     }
+
     const fold = (open) => {
       toggle.setAttribute("aria-expanded", open ? "true" : "false");
       card.classList.toggle("folded", !open);
     };
     toggle.addEventListener("click", () => fold(card.classList.contains("folded")));
     cb.addEventListener("change", () => {
-      markViewed(i, cb.checked);
+      if (cb.checked) viewed.add(i); else viewed.delete(i);
+      report();
       fold(!cb.checked);
       if (cb.checked) {
-        const at = tree.order.indexOf(i);
-        const nextCard = cards.get(tree.order[at + 1]);
+        const nextCard = cards.get(tree.order[tree.order.indexOf(i) + 1]);
         if (nextCard) nextCard.scrollIntoView({ block: "start", behavior: "smooth" });
       }
     });
     cards.set(i, card);
     stream.appendChild(card);
   }
-  select = (i) => {
+
+  const select = (i) => {
     const c = cards.get(i);
     if (!c) return;
     c.classList.remove("folded");
     c.scrollIntoView({ block: "start", behavior: "smooth" });
     tree.setCurrent(i);
   };
+  // The tree follows the card at the top of the screen.
   if (typeof IntersectionObserver === "function") {
     const io = new IntersectionObserver((entries) => {
       for (const e of entries) if (e.isIntersecting) tree.setCurrent(Number(e.target.dataset.index));
@@ -394,25 +324,4 @@ export function renderChanges(files, opts) {
   tree.setCurrent(tree.order[0]);
   report();
   return root;
-}
-
-// changeMap draws a thin strip beside the code with a mark for every run
-// of changed lines; clicking a mark scrolls the code to it.
-function changeMap(code) {
-  const map = el("div", "cmap");
-  map.setAttribute("aria-hidden", "true");
-  const rows = [...code.childNodes];
-  const n = rows.length || 1;
-  let prev = false;
-  rows.forEach((r, k) => {
-    const changed = /\bcr-(add|del)\b/.test(r.className) || (r.querySelector && r.querySelector(".ct.add, .ct.del"));
-    if (changed && !prev) {
-      const m = el("span", "cmap-mark");
-      m.style.setProperty("--at", (k / n * 100).toFixed(2) + "%");
-      m.addEventListener("click", () => r.scrollIntoView({ block: "center", behavior: "smooth" }));
-      map.appendChild(m);
-    }
-    prev = !!changed;
-  });
-  return map;
 }
